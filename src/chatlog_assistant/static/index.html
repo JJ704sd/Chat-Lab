@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>物流聊天分析助手</title>
+  <style>
+    :root { color-scheme: light; --ink:#162033; --muted:#667085; --line:#e4e7ec; --brand:#d9532b; --soft:#fff4ed; --ok:#12805c; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:Inter,"Microsoft YaHei",system-ui,sans-serif; background:#f7f8fa; color:var(--ink); }
+    header { padding:28px 34px 24px; background:linear-gradient(120deg,#202a44,#364569); color:white; }
+    header h1 { margin:0 0 8px; font-size:28px; }
+    header p { margin:0; color:#d6dbe7; }
+    main { max-width:1320px; margin:0 auto; padding:24px; }
+    .toolbar,.cards,.content { display:grid; gap:16px; }
+    .toolbar { grid-template-columns:180px 1fr auto; align-items:end; margin-bottom:18px; }
+    .field { display:grid; gap:7px; }
+    label { font-size:13px; color:var(--muted); }
+    select,button { height:40px; border:1px solid var(--line); border-radius:9px; background:white; padding:0 12px; color:var(--ink); }
+    button { cursor:pointer; background:var(--brand); color:white; border-color:var(--brand); font-weight:650; }
+    .cards { grid-template-columns:repeat(4,minmax(0,1fr)); margin-bottom:18px; }
+    .card,.panel { background:white; border:1px solid var(--line); border-radius:14px; box-shadow:0 4px 18px rgba(16,24,40,.04); }
+    .card { padding:18px; }
+    .card span { display:block; color:var(--muted); font-size:13px; }
+    .card strong { display:block; margin-top:8px; font-size:30px; }
+    .content { grid-template-columns:300px 1fr; }
+    .panel { padding:18px; min-width:0; }
+    h2 { margin:0 0 15px; font-size:17px; }
+    .category { display:grid; grid-template-columns:1fr auto; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+    .category:last-child { border-bottom:0; }
+    .category b { color:var(--brand); }
+    .table-wrap { overflow:auto; }
+    table { width:100%; border-collapse:collapse; min-width:780px; }
+    th,td { text-align:left; padding:12px 10px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
+    th { color:var(--muted); font-weight:600; background:#fbfcfd; position:sticky; top:0; }
+    .subject { display:inline-block; padding:3px 8px; border-radius:99px; background:var(--soft); color:var(--brand); white-space:nowrap; }
+    .solution { color:var(--ok); font-weight:650; }
+    .pending { color:#b54708; }
+    .empty { padding:42px; text-align:center; color:var(--muted); }
+    small { color:var(--muted); }
+    @media (max-width:900px) { .cards { grid-template-columns:repeat(2,1fr); } .content { grid-template-columns:1fr; } .toolbar { grid-template-columns:1fr 1fr; } .toolbar button { grid-column:1/-1; } }
+  </style>
+</head>
+<body>
+  <header><h1 id="title">物流聊天分析助手</h1><p id="subtitle">本地分析 · 主体隔离 · 问题与回复关联</p></header>
+  <main>
+    <section class="toolbar">
+      <div class="field"><label for="subject">主体</label><select id="subject"><option value="">全部</option><option value="zhongji">中技</option><option value="other">其他</option></select></div>
+      <div class="field"><label for="category">问题类别</label><select id="category"><option value="">全部类别</option></select></div>
+      <button id="refresh">刷新数据</button>
+    </section>
+    <section class="cards">
+      <article class="card"><span>问题实例</span><strong id="issueCount">0</strong></article>
+      <article class="card"><span>问题类别</span><strong id="categoryCount">0</strong></article>
+      <article class="card"><span>已有回复</span><strong id="repliedCount">0</strong></article>
+      <article class="card"><span>明确方案</span><strong id="solvedCount">0</strong></article>
+    </section>
+    <section class="content">
+      <aside class="panel"><h2>类别分布</h2><div id="categories"></div></aside>
+      <article class="panel"><h2>问题与对应回复</h2><div class="table-wrap" id="issues"></div></article>
+    </section>
+  </main>
+  <script>
+    const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    async function load() {
+      const subject = document.querySelector('#subject').value;
+      const category = document.querySelector('#category').value;
+      const params = new URLSearchParams();
+      if (subject) params.set('subject', subject);
+      const [meta, summary, issues] = await Promise.all([
+        fetch('/api/meta').then(r => r.json()).catch(() => ({label:'', workspace:''})),
+        fetch('/api/summary?' + params).then(r => r.json()),
+        fetch('/api/issues?' + new URLSearchParams({...Object.fromEntries(params), ...(category ? {category} : {})})).then(r => r.json())
+      ]);
+      if (meta.label) {
+        document.querySelector('#title').textContent = '物流聊天分析助手 · ' + meta.label;
+        document.querySelector('#subtitle').textContent = '本地分析 · ' + meta.label + '独立工作区 · 主体隔离 · 问题与回复关联';
+        document.title = meta.label + ' · 物流聊天分析助手';
+      }
+      for (const [id,key] of [['issueCount','issue_count'],['categoryCount','category_count'],['repliedCount','replied_count'],['solvedCount','solved_count']]) document.querySelector('#'+id).textContent = summary[key];
+      document.querySelector('#categories').innerHTML = summary.categories.length ? summary.categories.map(x => `<div class="category"><span>${esc(x.category)}</span><b>${x.count}</b></div>`).join('') : '<div class="empty">暂无数据</div>';
+      const select = document.querySelector('#category');
+      const current = select.value;
+      select.innerHTML = '<option value="">全部类别</option>' + summary.categories.map(x => `<option value="${esc(x.category)}">${esc(x.category)}</option>`).join('');
+      if ([...select.options].some(o => o.value === current)) select.value = current;
+      document.querySelector('#issues').innerHTML = issues.items.length ? `<table><thead><tr><th>时间 / 主体</th><th>类别</th><th>问题</th><th>对应回复</th></tr></thead><tbody>${issues.items.map(x => `<tr><td>${esc(x.sent_at.slice(0,16).replace('T',' '))}<br><span class="subject">${x.subject_bucket==='zhongji'?'中技':'其他'}${x.sender_subject?' · '+esc(x.sender_subject):''}</span></td><td>${esc(x.category)}<br><small>${Math.round(x.confidence*100)}%</small></td><td>${esc(x.summary)}</td><td>${x.response_text ? `<span class="${x.is_solution?'solution':'pending'}">${esc(x.response_kind)}</span><br>${esc(x.response_text)}<br><small>${x.latency_seconds} 秒</small>` : '<span class="pending">尚无回复</span>'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">暂无符合条件的问题</div>';
+    }
+    document.querySelector('#subject').addEventListener('change', load);
+    document.querySelector('#category').addEventListener('change', load);
+    document.querySelector('#refresh').addEventListener('click', load);
+    load(); setInterval(load, 60000);
+  </script>
+</body>
+</html>

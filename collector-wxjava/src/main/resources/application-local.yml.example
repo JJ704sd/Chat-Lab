@@ -1,0 +1,15 @@
+# Copy to application-local.yml (gitignored). Do not commit secrets.
+# Spring profile: --spring.profiles.active=local
+
+collector:
+  corp-id: wwxxxxxxxxxxxx
+  live: true
+  pull-limit: 10
+  own-corp-name: 中技物流
+  # Prefer env WECOM_MSG_AUDIT_SECRET — never a normal self-built app secret.
+  # msg-audit-secret: from-env
+  rsa-private-key-path: D:/chatlab/secrets/msg-audit-private.pem
+  sdk-dir: D:/chatlab/runtime/wecom-sdk
+  # Optional explicit DLL list. If empty, collector scans sdk-dir and puts lib*.dll first.
+  # msg-audit-lib-path: D:/chatlab/runtime/wecom-sdk/libcrypto-1_1-x64.dll,libssl-1_1-x64.dll,libcurl-x64.dll,WeWorkFinanceSdk.dll
+  contact-secret: ""

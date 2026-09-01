@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: collector-wxjava
+  main:
+    web-application-type: none
+
+collector:
+  corp-id: ${WECOM_CORP_ID:}
+  msg-audit-secret: ${WECOM_MSG_AUDIT_SECRET:}
+  msg-audit-pri-key: ${WECOM_MSG_AUDIT_PRI_KEY:}
+  rsa-private-key-path: ${WECOM_RSA_PRIVATE_KEY_PATH:}
+  contact-secret: ${WECOM_CONTACT_SECRET:}
+  own-corp-name: ${WECOM_OWN_CORP_NAME:}
+  msg-audit-lib-path: ${WECOM_MSG_AUDIT_LIB_PATH:}
+  sdk-dir: ${WECOM_SDK_DIR:runtime/wecom-sdk}
+  db-path: ${COLLECTOR_DB:data/wecom/collector.sqlite}
+  inbox-dir: ${COLLECTOR_INBOX:data/wecom/inbox}
+  media-dir: ${COLLECTOR_MEDIA:data/wecom/media}
+  display-map-path: ${COLLECTOR_DISPLAY_MAP:data/wecom/userid_display.json}
+  fixture-path: ${COLLECTOR_FIXTURE:}
+  exit-after-fixture: ${COLLECTOR_EXIT_AFTER_FIXTURE:false}
+  live: ${COLLECTOR_LIVE:false}
+  pull-limit: ${COLLECTOR_PULL_LIMIT:10}
+  poll-ms: ${COLLECTOR_POLL_MS:45000}
+  timeout-ms: ${COLLECTOR_TIMEOUT_MS:10000}
+  media-timeout-ms: ${COLLECTOR_MEDIA_TIMEOUT_MS:30000}
+  pkcs: ${COLLECTOR_PKCS:2}
+  media-enabled: ${COLLECTOR_MEDIA_ENABLED:false}
+  media-max-retries: 5

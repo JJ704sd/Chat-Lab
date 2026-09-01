@@ -1,0 +1,3 @@
+{"seq": 196, "msgid": "CAQQluDa4QUY0On2rYSAgAMgzPrShAE=", "action": "send", "from": "XuJinSheng", "tolist": ["icefog"], "roomid": "", "msgtime": 1547087894783, "msgtype": "text", "text": {"content": "请安排提货并报价"}}
+{"seq": 197, "msgid": "room-track-1", "action": "send", "from": "icefog", "tolist": ["XuJinSheng"], "roomid": "wrjc7bDwYAOAhf9quEwRRxyyoMm0QAAA", "msgtime": 1547087899783, "msgtype": "text", "text": {"content": "马上查询轨迹"}}
+{"seq": 198, "msgid": "img-1_external", "action": "send", "from": "wmErxtDgAA9AW32YyyuYRimKr7D1KWlw", "tolist": ["kenshin"], "roomid": "", "msgtime": 1603875615723, "msgtype": "image", "image": {"sdkfileid": "CtYBMzA2", "filesize": 70961}}

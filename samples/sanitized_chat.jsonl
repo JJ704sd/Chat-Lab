@@ -1,0 +1,6 @@
+{"source":"sample","source_message_id":"m1","conversation_id":"group-demo","sent_at":"2026-08-31T09:02:23+08:00","sender_display":"张某 @中技物流","content":"40ctns/320kgs/1.77cbm\n提货地址：北京市测试路18号\n送到上海某机场，麻烦请报价，并告知时效","direction":"outbound"}
+{"source":"sample","source_message_id":"m2","conversation_id":"group-demo","sent_at":"2026-08-31T09:02:30+08:00","sender_display":"客服小曾 @其他物流","content":"马上","direction":"inbound"}
+{"source":"sample","source_message_id":"m3","conversation_id":"group-demo","sent_at":"2026-08-31T09:03:01+08:00","sender_display":"客服小曾 @其他物流","content":"@张某 上海隔日达，预计报价620元，已安排提货","direction":"inbound"}
+{"source":"sample","source_message_id":"m4","conversation_id":"group-demo-2","sent_at":"2026-08-31T10:00:00+08:00","sender_display":"李某 @嘉航盛物流","content":"货物延误还没有到，请帮忙查询轨迹","direction":"outbound"}
+{"source":"sample","source_message_id":"m5","conversation_id":"group-demo-2","sent_at":"2026-08-31T10:04:00+08:00","sender_display":"操作员 @服务团队","content":"已联系承运商，预计今天18点送达","direction":"inbound"}
+
