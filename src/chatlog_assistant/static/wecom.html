@@ -56,7 +56,7 @@
     
     .toolbar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
       background: var(--card-bg);
       padding: 16px;
@@ -77,7 +77,7 @@
       font-size: 13px;
     }
     select:focus, input:focus { outline: none; border-color: var(--brand); }
-    .btn-group { display: flex; gap: 8px; }
+    .btn-group { display: flex; gap: 8px; grid-column: 1 / -1; }
     button.btn-primary {
       cursor: pointer;
       background: var(--brand);
@@ -98,7 +98,7 @@
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 14px;
       margin-bottom: 20px;
     }
@@ -184,6 +184,13 @@
 
     .empty { padding: 48px; text-align: center; color: var(--muted); }
     small { color: var(--muted); font-size: 11px; }
+    #coverage { padding: 12px 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; }
+    .report-panel { margin-bottom: 18px; }
+    .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    details { margin: 8px 0; }
+    summary { cursor: pointer; }
+    .latency-bar { display: inline-block; min-width: 2px; height: 9px; background: #2563eb; border-radius: 2px; }
+    .latency-ack { background: #f59e0b; }
 
     @media (max-width: 1024px) {
       .cards { grid-template-columns: repeat(2, 1fr); }
@@ -195,10 +202,19 @@
   <header>
     <div class="badge">Local Offline & Live Assistant</div>
     <h1>企业微信物流聊天记录分析助手</h1>
-    <p>本地数据发现 · 一致性快照解密 · 主体严格分类 · 物流问题与回复证据链闭环</p>
+    <p>按群提取物流信息 · 引用与上下文关联 · 首次响应和方案耗时 · 风险证据</p>
   </header>
   <main>
     <section class="toolbar">
+      <div class="field">
+        <label for="conversationInput">群名称（模糊匹配 / 可下拉选择）</label>
+        <input id="conversationInput" list="convDatalist" value="中技AI cosplay" placeholder="留空查看全部群聊">
+        <datalist id="convDatalist"></datalist>
+      </div>
+      <div class="field">
+        <label for="conversationIdInput">会话 ID</label>
+        <input id="conversationIdInput" placeholder="同名群可用 ID 区分">
+      </div>
       <div class="field">
         <label for="subjectSelect">发送者主体</label>
         <select id="subjectSelect">
@@ -229,15 +245,17 @@
         <input type="text" id="accountInput" placeholder="可选过滤账号">
       </div>
       <div class="btn-group">
-        <button class="btn-primary" id="btnRefresh">刷新分析</button>
-        <button class="btn-secondary" id="btnExportCsv">导出 CSV</button>
-        <button class="btn-secondary" id="btnExportJson">导出 JSON</button>
+        <button class="btn-primary" id="btnRefresh">刷新结果</button>
+        <button class="btn-secondary" id="btnExportCsv">导出业务轮次 CSV</button>
+        <button class="btn-secondary" id="btnExportJson">导出完整证据 JSON</button>
       </div>
     </section>
 
+    <div class="toolbar"><div class="field"><label for="scopeSelect">记录范围</label><select id="scopeSelect"><option value="">主群及全部转发</option></select></div><div class="field"><label for="evidenceSearch">证据内检索（时间、人员、正文）</label><input id="evidenceSearch" placeholder="例如 21:01:23、氢氧化钾、通州"></div></div>
+    <p id="coverage" role="status"></p>
     <section class="cards">
       <article class="card">
-        <span>识别物流问题总数</span>
+        <span>物流提问数（按消息去重）</span>
         <strong id="statTotal">0</strong>
       </article>
       <article class="card">
@@ -253,9 +271,30 @@
         <strong id="statUnreplied" style="color: var(--danger)">0</strong>
       </article>
       <article class="card">
-        <span>涵盖问题类别数</span>
+        <span>范围内消息总数</span>
         <strong id="statCatCount">0</strong>
       </article>
+      <article class="card"><span>跟进中（待补充或确认）</span><strong id="statProgress">0</strong></article>
+    </section>
+
+    <section class="panel report-panel">
+      <h2>响应与方案时延（秒）</h2>
+      <p id="latencySummary"></p>
+      <details><summary>展开每轮时延图表</summary><div id="latencyChart" style="max-height:460px;overflow:auto"></div></details>
+      <p id="specialGoodsSummary"></p>
+    </section>
+    <section class="panel report-panel">
+      <h2>路线报价与时效</h2>
+      <div class="table-wrap" id="routesWrap" style="max-height:460px;overflow:auto"></div>
+    </section>
+    <section class="panel report-panel">
+      <h2>业务轮次与完整回复证据（时间升序）</h2>
+      <p><small>已有方案表示获得报价或处置结论，不代表运输完成。追问独立计数；缺失字段保持未知。</small></p>
+      <div id="eventsWrap"></div>
+    </section>
+    <section class="panel report-panel">
+      <h2>全量已导入消息与父子证据链</h2>
+      <div id="messagesWrap"></div>
     </section>
 
     <section class="grid-2">
@@ -264,7 +303,7 @@
         <div id="categoryList"></div>
       </aside>
       <article class="panel">
-        <h2>物流问题、回复方案与证据链</h2>
+        <h2>业务状态索引（与上方指标同一口径）</h2>
         <div class="table-wrap" id="issuesWrap"></div>
       </article>
     </section>
@@ -272,7 +311,7 @@
 
   <script>
     const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-    const formatTime = t => t ? String(t).slice(0, 16).replace('T', ' ') : '-';
+    const formatTime = t => t ? String(t).slice(0, 19).replace('T', ' ') : '-';
     
     function statusClass(st) {
       if (st === 'solved') return 'status-solved';
@@ -281,158 +320,120 @@
       return 'status-progress';
     }
     function statusLabel(st) {
-      if (st === 'solved') return '已有方案 (已解决)';
+      if (st === 'solved') return '已有相关方案';
       if (st === 'acknowledged') return '仅确认收到';
       if (st === 'unreplied') return '未回复';
       if (st === 'in_progress') return '跟进中';
       return st || '未知';
     }
 
-    async function loadData() {
-      const wrap = document.querySelector('#issuesWrap');
-      wrap.innerHTML = '<div class="empty">正在加载数据...</div>';
-
-      try {
-        const subj = document.querySelector('#subjectSelect').value;
-        const cat = document.querySelector('#categorySelect').value;
-        const st = document.querySelector('#statusSelect').value;
-        const acc = document.querySelector('#accountInput').value.trim();
-
-        const params = new URLSearchParams();
-        if (subj) params.set('subject', subj);
-        if (cat) params.set('category', cat);
-        if (st) params.set('status', st);
-        if (acc) params.set('account_id', acc);
-
-        const [summaryRes, issuesRes] = await Promise.all([
-          fetch('/api/wecom/summary?' + params).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-          fetch('/api/wecom/issues?' + params).then(r => r.ok ? r.json() : {items:[]}).catch(() => ({items:[]}))
-        ]);
-
-        // Update counters
-        document.querySelector('#statTotal').textContent = summaryRes.issue_count || 0;
-        document.querySelector('#statSolved').textContent = summaryRes.solved_count || 0;
-        document.querySelector('#statAck').textContent = summaryRes.ack_only_count || 0;
-        document.querySelector('#statUnreplied').textContent = Math.max(0, (summaryRes.pending_count || 0) - (summaryRes.ack_only_count || 0));
-        document.querySelector('#statCatCount').textContent = summaryRes.category_count || 0;
-
-        // Update category list & dropdown
-        const catListEl = document.querySelector('#categoryList');
-        const cats = summaryRes.categories || [];
-        if (cats.length) {
-          catListEl.innerHTML = cats.map(c => `
-            <div class="cat-item ${cat === c.category ? 'active' : ''}" onclick="selectCategory('${esc(c.category)}')">
-              <span>${esc(c.category)}</span>
-              <b>${c.count}</b>
-            </div>
-          `).join('');
-        } else {
-          catListEl.innerHTML = '<div class="empty">暂无统计数据</div>';
-        }
-
-        const catSelect = document.querySelector('#categorySelect');
-        const curCat = catSelect.value;
-        catSelect.innerHTML = '<option value="">全部类别</option>' + cats.map(c => `
-          <option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>
-        `).join('');
-        if ([...catSelect.options].some(o => o.value === curCat)) catSelect.value = curCat;
-
-        // Render issues table
-        const items = issuesRes.items || [];
-        if (items.length) {
-          wrap.innerHTML = `
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 140px;">提出者 / 主体</th>
-                  <th style="width: 110px;">类别 / 状态</th>
-                  <th>提问内容与业务线索</th>
-                  <th>回复人员 / 方案内容</th>
-                  <th style="width: 100px;">关联证据</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${items.map(item => {
-                  const subCls = item.question_subject_bucket === 'zhongji' ? 'tag-zhongji' : (item.question_subject_bucket === 'other' ? 'tag-other' : 'tag-unknown');
-                  const subName = item.question_subject_bucket === 'zhongji' ? '中技' : (item.question_subject_bucket === 'other' ? '其他' : '未知');
-                  
-                  let clueBadges = '';
-                  if (item.clues) {
-                    if (item.clues.waybill_no) clueBadges += `<span class="clue-badge">单号: ${esc(item.clues.waybill_no)}</span>`;
-                    if (item.clues.packages) clueBadges += `<span class="clue-badge">${esc(item.clues.packages)}</span>`;
-                    if (item.clues.weight) clueBadges += `<span class="clue-badge">${esc(item.clues.weight)}</span>`;
-                    if (item.clues.volume) clueBadges += `<span class="clue-badge">${esc(item.clues.volume)}</span>`;
-                  }
-
-                  return `
-                    <tr>
-                      <td>
-                        <strong>${esc(item.question_sender_name || '未知')}</strong><br>
-                        <span class="tag ${subCls}">${subName}${item.question_corp_name ? ' · ' + esc(item.question_corp_name) : ''}</span><br>
-                        <small>${esc(formatTime(item.question_sent_at))}</small>
-                      </td>
-                      <td>
-                        <b>${esc(item.category || '其他')}</b><br>
-                        <span class="${statusClass(item.issue_status)}">${statusLabel(item.issue_status)}</span>
-                      </td>
-                      <td>
-                        <div>${esc(item.question_raw_text || '')}</div>
-                        <div>${clueBadges}</div>
-                        <small style="color:#64748b;">群/会话: ${esc(item.conversation_name || '')}</small>
-                      </td>
-                      <td>
-                        ${item.responder_name ? `
-                          <strong>${esc(item.responder_name)}</strong> 
-                          <span class="tag ${item.responder_subject_bucket==='zhongji'?'tag-zhongji':'tag-other'}">${item.responder_subject_bucket==='zhongji'?'中技':'其他'}</span>
-                          <small>(${item.latency_seconds ?? 0}秒后)</small><br>
-                          <div>${esc(item.responder_raw_text || '')}</div>
-                        ` : '<span class="status-unreplied">暂无回复</span>'}
-                      </td>
-                      <td>
-                        <small>
-                          依据: ${esc(item.association_basis || '无')}<br>
-                          引用: ${esc(item.source_reference || '')}
-                        </small>
-                      </td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-          `;
-        } else {
-          wrap.innerHTML = '<div class="empty">暂无匹配的物流问题记录</div>';
-        }
-      } catch (err) {
-        wrap.innerHTML = `<div class="empty" style="color: var(--danger)">数据加载异常: ${esc(err.message)}</div>`;
+    function filterParams() {
+      const params = new URLSearchParams();
+      for (const [key, id] of Object.entries({subject:'subjectSelect',category:'categorySelect',status:'statusSelect',
+          account_id:'accountInput',conversation_name:'conversationInput',conversation_id:'conversationIdInput'})) {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(key, value);
       }
+      return params;
     }
+
+    let currentReport = null;
+    const knownCategories = new Set();
+    function renderReport(report) {
+      currentReport = report;
+      const c = report.coverage, m = report.metrics;
+      for (const [id,key] of Object.entries({statTotal:'question_count',statSolved:'solved_count',statAck:'ack_only_count',statUnreplied:'unreplied_count',statProgress:'in_progress_count'})) document.getElementById(id).textContent=m[key];
+      document.getElementById('statCatCount').textContent=c.message_count;
+      document.getElementById('coverage').textContent = `${c.database_backed_count===c.message_count && c.message_count ? '本地数据库来源已核验。' : '含来源未核验材料。'}当前 ${c.message_count} 条，${formatTime(c.first_message_at)} 至 ${formatTime(c.last_message_at)}；嵌套 ${c.nested_message_count} 条，最大深度 ${c.max_nesting_depth}；未完整展开转发 ${c.unexpanded_forward_count} 条，未解析媒体 ${c.unparsed_media_count} 条。同名未核验材料排除 ${c.excluded_unverified_source_count} 条。${c.note}`;
+      const stat = (label,s) => `${label}：均值 ${s.mean_seconds ?? '—'} 秒，中位数 ${s.median_seconds ?? '—'} 秒，样本 ${s.sample_count}`;
+      document.getElementById('latencySummary').textContent = [stat('首次确认',m.ack_latency),stat('首次有效回复',m.first_response_latency),stat('首次方案',m.solution_latency),stat('最终方案',m.final_solution_latency)].join('；');
+      const max=Math.max(1,...report.events.flatMap(e=>[e.ack_seconds||0,e.final_solution_seconds||0]));
+      document.getElementById('latencyChart').innerHTML=report.events.map(e=>`<div style="margin:8px 0" aria-label="轮次${e.round}，确认${e.ack_seconds ?? '未知'}秒，最终方案${e.final_solution_seconds ?? '未知'}秒"><small>轮次 ${e.round} ${esc(formatTime(e.sent_at))}</small><br>确认 ${e.ack_seconds ?? '—'} 秒 <span class="latency-bar latency-ack" style="width:${(e.ack_seconds||0)/max*45}%"></span><br>方案 ${e.final_solution_seconds ?? '—'} 秒 <span class="latency-bar" style="width:${(e.final_solution_seconds||0)/max*45}%"></span></div>`).join('');
+      const s=report.special_goods, t=report.shipment_constraints, a=report.association_quality;
+      const rate=n=>n==null?'—':(n*100).toFixed(1)+'%';
+      document.getElementById('specialGoodsSummary').textContent=`特殊货物 ${s.question_count} 笔；已给方案 ${s.handled_count}（${rate(s.handling_rate)}）；拒单 ${s.rejected_count}（${rate(s.rejection_rate)}）。特殊限制 ${t.question_count} 笔，处理率 ${rate(t.handling_rate)}。启发式确认关联 ${a.heuristic_ack_count} 次，待复核问题 ${a.questions_flagged_for_review} 笔。`;
+      document.getElementById('routesWrap').innerHTML=`<table><thead><tr><th>路线 / 区域</th><th>提问 / 已归属方案</th><th>报价与时效</th></tr></thead><tbody>${report.routes.map(r=>`<tr><td>${esc(r.origin||'未知')} → ${esc(r.destination||'未唯一确定')}<br><small>${esc(r.region)}</small></td><td>${r.question_count} / ${r.solved_count}</td><td>${r.quotes.map(q=>`<a href="#event-${q.round}">轮次 ${q.round}</a>：${esc(q.amount??'无金额')} · ${esc(q.currency??'币种未注明')} · ${esc(q.delivery_time??'时效未注明')}<br><small>${esc(q.association_basis)}</small>`).join('<br>')}</td></tr>`).join('')}</tbody></table>`;
+      const categories={};
+      for(const e of report.events) for(const key of Object.keys(e.category_statuses)){categories[key]=(categories[key]||0)+1;knownCategories.add(key);}
+      const selected=document.getElementById('categorySelect').value;
+      document.getElementById('categorySelect').innerHTML='<option value="">全部类别</option>'+[...knownCategories].map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+      document.getElementById('categorySelect').value=selected;
+      document.getElementById('categoryList').innerHTML=Object.entries(categories).map(([k,v])=>`<div class="cat-item"><span>${esc(k)}</span><b>${v}</b></div>`).join('');
+      document.getElementById('issuesWrap').innerHTML=`<table><thead><tr><th>轮次 / 时间 / 人员</th><th>类别</th><th>状态</th></tr></thead><tbody>${report.events.map(e=>`<tr><td><a href="#event-${e.round}">轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</a></td><td>${Object.keys(e.category_statuses).map(esc).join('、')}</td><td>${statusLabel(e.status)}</td></tr>`).join('')}</tbody></table>`;
+      if(!document.getElementById('conversationIdInput').value){
+        const groups={};
+        for(const row of report.messages) if(row.nesting_depth>0) groups[row.conversation_id]=(groups[row.conversation_id]||0)+1;
+        const options=Object.entries(groups).sort((a,b)=>b[1]-a[1]);
+        document.getElementById('scopeSelect').innerHTML='<option value="">主群及全部转发</option>'+options.map(([id,count],i)=>`<option value="${esc(id)}">${i===0?'重点转发':'其他转发'} · ${count} 条</option>`).join('');
+      }
+      renderEvidence();
+    }
+    function renderEvidence(){
+      const report=currentReport;
+      if(!report)return;
+      const term=document.getElementById('evidenceSearch').value.trim().toLowerCase();
+      const matches=row=>!term||[row.sent_at,row.sender_name,row.text,...(row.responses||[]).map(r=>r.text)].join(' ').toLowerCase().includes(term);
+      document.getElementById('eventsWrap').innerHTML=report.events.filter(matches).map(e=>`<details class="event" id="event-${e.round}"><summary><b>轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</b> <span class="tag tag-${esc(e.subject_bucket)}">${esc(e.subject_bucket)}</span> <span class="${statusClass(e.status)}">${statusLabel(e.status)}</span>${e.needs_review?' · 待复核':''}</summary><div class="message-text">${esc(e.text)}</div><p>起运 ${esc(e.clues.origin??'未知')} → ${esc(e.clues.destination??'未知')} · 首次确认 ${e.ack_seconds??'—'} 秒 · 首次方案 ${e.solution_seconds??'—'} 秒 · 最终方案 ${e.final_solution_seconds??'—'} 秒</p>${e.clues.followup_to_message_id?`<p>前一诉求：<a href="#message-${esc(e.clues.followup_to_message_id)}">查看证据</a>（${esc(e.clues.followup_basis)}）</p>`:''}<details><summary>全部规格、路线与类别状态</summary><pre class="message-text">${esc(JSON.stringify({entities:e.clues,routes:e.route_coverage,category_statuses:e.category_statuses},null,2))}</pre></details><p><a href="#message-${esc(e.message_id)}">原消息及父级证据</a></p>${e.responses.map(r=>`<details><summary>${esc(formatTime(r.sent_at))} · ${esc(r.sender_name)} · ${esc(r.kind)} · ${r.latency_seconds} 秒 · is_solution=${r.is_solution}</summary><div class="message-text">${esc(r.text)}</div><small>关联依据 ${esc(r.basis)} · <a href="#message-${esc(r.message_id)}">原始回复</a></small></details>`).join('')}</details>`).join('')||'<p>当前筛选无匹配的物流提问。</p>';
+      // Keep every source node in the DOM so parent links remain usable while searching.
+      document.getElementById('messagesWrap').innerHTML=[...report.messages,...(report.ancestors||[])].map(row=>`<details id="message-${esc(row.id)}" ${matches(row)?'':'hidden'}><summary>${esc(formatTime(row.sent_at))} · ${esc(row.sender_name)} · ${esc(row.subject_bucket)} · 层级 ${row.nesting_depth} · ${esc(row.parse_status)}</summary><div class="message-text">${esc(row.text)}</div><p><small>${row.provenance.message_id_basis==='native_payload_position'?'本地记录键（载荷未提供原消息 ID）':'原消息 ID'} ${esc(row.message_id)}<br>${esc(row.source_reference)}</small></p>${row.parent_id?`<a href="#message-${esc(row.parent_id)}">跳转父消息</a>`:'<small>主群消息</small>'}<details><summary>来源哈希、原始身份与引用</summary><pre class="message-text">${esc(JSON.stringify(row.provenance,null,2))}</pre></details></details>`).join('');
+    }
+    async function loadData(){
+      try{
+        document.getElementById('coverage').textContent='正在读取完整证据…';
+        const response=await fetch('/api/wecom/report?'+filterParams());
+        if(!response.ok)throw new Error('完整报告接口不可用');
+        renderReport(await response.json());
+      }catch(err){document.getElementById('coverage').textContent='数据加载异常：'+err.message;}
+    }
+    document.getElementById('scopeSelect').addEventListener('change',e=>{
+      document.getElementById('conversationIdInput').value=e.target.value;
+      document.getElementById('evidenceSearch').value='';
+      loadData();
+    });
+    document.getElementById('evidenceSearch').addEventListener('input',renderEvidence);
+    document.addEventListener('click',event=>{
+      const link=event.target.closest('a[href^="#"]');
+      if(!link)return;
+      const target=document.getElementById(link.getAttribute('href').slice(1));
+      if(target){target.hidden=false;target.open=true;}
+    });
 
     function selectCategory(cat) {
       document.querySelector('#categorySelect').value = cat;
       loadData();
     }
 
+    async function loadConversations() {
+      try {
+        const res = await fetch('/api/wecom/conversations').then(r => r.ok ? r.json() : {items:[]});
+        const dl = document.getElementById('convDatalist');
+        if (dl && res.items && res.items.length) {
+          dl.innerHTML = res.items.map(c => `
+            <option value="${esc(c.conversation_name || c.conversation_id)}">${esc(c.conversation_name || c.conversation_id)} (${c.message_count}条消息)</option>
+          `).join('');
+        }
+      } catch (_) {}
+    }
+
     document.querySelector('#btnRefresh').addEventListener('click', loadData);
     document.querySelector('#subjectSelect').addEventListener('change', loadData);
     document.querySelector('#categorySelect').addEventListener('change', loadData);
     document.querySelector('#statusSelect').addEventListener('change', loadData);
+    for (const id of ['accountInput', 'conversationInput', 'conversationIdInput']) {
+      document.getElementById(id).addEventListener('change', loadData);
+      document.getElementById(id).addEventListener('input', (e) => {
+        if (!e.target.value) loadData();
+      });
+    }
     
     document.querySelector('#btnExportCsv').addEventListener('click', () => {
-      window.open('/api/wecom/export?format=csv&' + new URLSearchParams({
-        subject: document.querySelector('#subjectSelect').value,
-        category: document.querySelector('#categorySelect').value,
-        status: document.querySelector('#statusSelect').value,
-      }));
+      window.open('/api/wecom/report-export?format=csv&' + filterParams());
     });
     document.querySelector('#btnExportJson').addEventListener('click', () => {
-      window.open('/api/wecom/export?format=json&' + new URLSearchParams({
-        subject: document.querySelector('#subjectSelect').value,
-        category: document.querySelector('#categorySelect').value,
-        status: document.querySelector('#statusSelect').value,
-      }));
+      window.open('/api/wecom/report-export?format=json&' + filterParams());
     });
 
+    loadConversations();
     loadData();
   </script>
 </body>

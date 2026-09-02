@@ -268,23 +268,17 @@ def set_execute_breakpoints(tid: int, addresses: list[int], wow64: bool) -> bool
         return False
 
     def _apply() -> bool:
-        applied = False
-        raw64 = _thread_context(tid, False)
-        if raw64 is not None:
-            for index, address in enumerate(addresses):
-                _set_u64(raw64, X64_OFF_DR0 + index * 8, address)
-            _set_u64(raw64, X64_OFF_DR7, dr7_execute(len(addresses)))
-            _set_u32(raw64, X64_OFF_FLAGS, CONTEXT_AMD64_FULL_DEBUG)
-            applied = _apply_thread_context(tid, raw64, False) or applied
-        if wow64:
-            raw32 = _thread_context(tid, True)
-            if raw32 is not None:
-                for index, address in enumerate(addresses):
-                    _set_u32(raw32, WOW64_OFF_DR0 + index * 4, address & 0xFFFFFFFF)
-                _set_u32(raw32, WOW64_OFF_DR7, dr7_execute(len(addresses)))
-                _set_u32(raw32, WOW64_OFF_FLAGS, WOW64_CONTEXT_FULL_DEBUG)
-                applied = _apply_thread_context(tid, raw32, True) or applied
-        return applied
+        raw = _thread_context(tid, wow64)
+        if raw is None:
+            return False
+        setter, offset, stride = (_set_u32, WOW64_OFF_DR0, 4) if wow64 else (_set_u64, X64_OFF_DR0, 8)
+        for index in range(4):
+            setter(raw, offset + index * stride, addresses[index] if index < len(addresses) else 0)
+        setter(raw, WOW64_OFF_DR7 if wow64 else X64_OFF_DR7, dr7_execute(len(addresses)))
+        # Update debug registers only; never replay stale general registers.
+        _set_u32(raw, WOW64_OFF_FLAGS if wow64 else X64_OFF_FLAGS,
+                 (WOW64_CONTEXT_i386 if wow64 else CONTEXT_AMD64) | 0x10)
+        return _apply_thread_context(tid, raw, wow64)
 
     return bool(_with_suspended_thread(tid, _apply))
 
@@ -298,12 +292,12 @@ def clear_execute_breakpoints(tid: int, wow64: bool) -> bool:
             for index in range(4):
                 _set_u32(raw, WOW64_OFF_DR0 + index * 4, 0)
             _set_u32(raw, WOW64_OFF_DR7, 0)
-            _set_u32(raw, WOW64_OFF_FLAGS, WOW64_CONTEXT_FULL_DEBUG)
+            _set_u32(raw, WOW64_OFF_FLAGS, WOW64_CONTEXT_i386 | 0x10)
         else:
             for index in range(4):
                 _set_u64(raw, X64_OFF_DR0 + index * 8, 0)
             _set_u64(raw, X64_OFF_DR7, 0)
-            _set_u32(raw, X64_OFF_FLAGS, CONTEXT_AMD64_FULL_DEBUG)
+            _set_u32(raw, X64_OFF_FLAGS, CONTEXT_AMD64 | 0x10)
         return _apply_thread_context(tid, raw, wow64)
 
     return bool(_with_suspended_thread(tid, _apply))
@@ -503,6 +497,18 @@ def _set_wow64_eip_and_trap(tid: int, eip: int | None, trap: bool | None) -> boo
     return _apply_thread_context(tid, raw, True)
 
 
+def _resume_hardware_breakpoint(tid: int, wow64: bool) -> bool:
+    raw = _thread_context(tid, wow64)
+    if raw is None:
+        return False
+    offset = WOW64_OFF_EFLAGS if wow64 else 0x44
+    # RF allows the interrupted instruction to execute without trapping again.
+    _set_u32(raw, offset, _u32(raw, offset) | 0x10000)
+    _set_u32(raw, WOW64_OFF_FLAGS if wow64 else X64_OFF_FLAGS,
+             (WOW64_CONTEXT_i386 if wow64 else CONTEXT_AMD64) | 0x1)
+    return _apply_thread_context(tid, raw, wow64)
+
+
 def attach_and_wait(
     pids: Iterable[int],
     addresses_for_pid: Callable[[int], list[int]],
@@ -511,151 +517,130 @@ def attach_and_wait(
     timeout: float,
     wow64: bool,
     extra_pids: Callable[[], Iterable[int]] | None = None,
+    on_progress: Callable[[dict[str, int]], None] | None = None,
 ) -> dict[str, int]:
-    """Attach, set hardware execute breakpoints, and wait until on_hit returns True."""
+    """Hardware-only capture; always continue pending events and detach normally."""
     if os.name != "nt":
         return {"attached": 0, "hits": 0}
     enable_debug_privilege()
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.DebugActiveProcess.argtypes = [wintypes.DWORD]
-    kernel32.DebugActiveProcess.restype = wintypes.BOOL
-    kernel32.DebugActiveProcessStop.argtypes = [wintypes.DWORD]
-    kernel32.DebugActiveProcessStop.restype = wintypes.BOOL
+    for name in ("DebugActiveProcess", "DebugActiveProcessStop"):
+        function = getattr(kernel32, name)
+        function.argtypes, function.restype = [wintypes.DWORD], wintypes.BOOL
     kernel32.DebugSetProcessKillOnExit.argtypes = [wintypes.BOOL]
     kernel32.DebugSetProcessKillOnExit.restype = wintypes.BOOL
     kernel32.WaitForDebugEvent.argtypes = [ctypes.POINTER(DEBUG_EVENT), wintypes.DWORD]
     kernel32.WaitForDebugEvent.restype = wintypes.BOOL
     kernel32.ContinueDebugEvent.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
     kernel32.ContinueDebugEvent.restype = wintypes.BOOL
-    kernel32.DebugSetProcessKillOnExit(False)
-
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
     attached: set[int] = set()
-    armed: set[int] = set()
-    software: dict[tuple[int, int], bytes] = {}
-    rearm: set[tuple[int, int]] = set()
-    software_armed = 0
-    hits = 0
-    breakpoint_events = 0
+    attempted: set[int] = set()
+    bindings: dict[tuple[int, int], tuple[int, ...]] = {}
+    stats = {"attached": 0, "hits": 0, "breakpoint_events": 0, "armed_threads": 0,
+             "software_breakpoints": 0, "detached": 0, "detach_failed": 0,
+             "clear_failed": 0, "attach_failed": 0, "continue_failed": 0}
+    pending: tuple[int, int, int] | None = None
     deadline = time.monotonic() + timeout
 
     def try_attach(pid: int) -> None:
-        if pid in attached:
+        if pid in attempted:
             return
-        if kernel32.DebugActiveProcess(pid):
-            attached.add(pid)
+        attempted.add(pid)
+        if not kernel32.DebugActiveProcess(pid):
+            stats["attach_failed"] += 1
+            return
+        attached.add(pid)
+        stats["attached"] += 1
+        # Must be called after a successful attachment. The debugger must not
+        # terminate the client when the capture process exits.
+        if not kernel32.DebugSetProcessKillOnExit(False):
+            raise OSError("Could not disable debugger kill-on-exit")
 
     def arm_pid(pid: int) -> None:
-        nonlocal software_armed
-        addrs = addresses_for_pid(pid)
-        if not addrs:
+        addresses = tuple(addresses_for_pid(pid)[:4])
+        if not addresses:
             return
-        hardware = addrs[:4]
+        changed = False
         for thread in list_threads(pid):
-            if set_execute_breakpoints(thread.tid, hardware, wow64):
-                armed.add(thread.tid)
-        if wow64:
-            install_software_breakpoints(pid, addrs, software)
-            software_armed = len(software)
+            key = (pid, thread.tid)
+            if bindings.get(key) == addresses:
+                continue
+            if set_execute_breakpoints(thread.tid, list(addresses), wow64):
+                bindings[key] = addresses
+                changed = True
+        stats["armed_threads"] = len(bindings)
+        if changed and on_progress is not None:
+            on_progress(dict(stats))
 
     try:
         for pid in pids:
             try_attach(pid)
-        stats_attached = len(attached)
         while time.monotonic() < deadline:
             if extra_pids is not None:
                 for pid in extra_pids():
                     try_attach(pid)
-                stats_attached = max(stats_attached, len(attached))
+            if not attached:
+                break
             event = DEBUG_EVENT()
-            if not kernel32.WaitForDebugEvent(ctypes.byref(event), 500):
+            if not kernel32.WaitForDebugEvent(ctypes.byref(event), 250):
                 for pid in list(attached):
                     arm_pid(pid)
                 continue
-            pid = int(event.dwProcessId)
-            tid = int(event.dwThreadId)
+            pid, tid = int(event.dwProcessId), int(event.dwThreadId)
             code = int(event.dwDebugEventCode)
-            status = DBG_CONTINUE
-            if code in (
-                DEBUG_EVENT_CREATE_PROCESS,
-                DEBUG_EVENT_CREATE_THREAD,
-                DEBUG_EVENT_LOAD_DLL,
-            ) and pid in attached:
-                arm_pid(pid)
-                addrs = addresses_for_pid(pid)
-                if addrs:
-                    set_execute_breakpoints(tid, addrs[:4], wow64)
+            status, done = DBG_CONTINUE, False
+            pending = (pid, tid, status)
+            if code in (DEBUG_EVENT_CREATE_PROCESS, DEBUG_EVENT_CREATE_THREAD, DEBUG_EVENT_LOAD_DLL):
+                # File handles from debug events belong to the debugger.
+                handle = (event.u.CreateProcessInfo.hFile if code == DEBUG_EVENT_CREATE_PROCESS
+                          else event.u.LoadDll.hFile if code == DEBUG_EVENT_LOAD_DLL else None)
+                if handle:
+                    kernel32.CloseHandle(handle)
+                if pid in attached:
+                    arm_pid(pid)
             elif code == DEBUG_EVENT_EXCEPTION:
                 record = event.u.Exception.ExceptionRecord
-                exc = int(record.ExceptionCode)
-                exc_addr = int(record.ExceptionAddress or 0) & 0xFFFFFFFF
-                if exc == EXCEPTION_BREAKPOINT and pid in attached:
-                    matched_bp = None
-                    for address in (exc_addr, (exc_addr - 1) & 0xFFFFFFFF):
-                        if (pid, address) in software:
-                            matched_bp = address
-                            break
-                    if matched_bp is not None:
-                        breakpoint_events += 1
-                        original = software[(pid, matched_bp)]
-                        write_process_memory(pid, matched_bp, original)
-                        _set_wow64_eip_and_trap(tid, matched_bp, True)
-                        rearm.add((pid, matched_bp))
-                        hit = read_x86_hit(pid, tid)
-                        if hit is not None:
-                            hits += 1
-                            if on_hit(hit):
-                                kernel32.ContinueDebugEvent(pid, tid, DBG_CONTINUE)
-                                return {
-                                    "attached": stats_attached,
-                                    "hits": hits,
-                                    "breakpoint_events": breakpoint_events,
-                                    "armed_threads": len(armed),
-                                    "software_breakpoints": software_armed,
-                                }
+                exc, address = int(record.ExceptionCode), int(record.ExceptionAddress or 0)
+                if exc in (EXCEPTION_BREAKPOINT, 0x4000001F):
+                    # Native and WOW64 initial attach breakpoints.
                     status = DBG_CONTINUE
-                elif exc == EXCEPTION_SINGLE_STEP and pid in attached:
-                    breakpoint_events += 1
-                    for process_id, address in list(rearm):
-                        if process_id == pid:
-                            orig = software.get((pid, address))
-                            if orig:
-                                write_process_memory(pid, address, b"\xcc")
-                            rearm.discard((pid, address))
-                    _set_wow64_eip_and_trap(tid, None, False) if wow64 else None
-                    reader = read_x86_hit if wow64 else read_x64_hit
-                    hit = reader(pid, tid)
+                elif exc in (EXCEPTION_SINGLE_STEP, 0x4000001E) and address in bindings.get((pid, tid), ()):
+                    stats["breakpoint_events"] += 1
+                    if not _resume_hardware_breakpoint(tid, wow64):
+                        raise OSError("Could not resume hardware breakpoint")
+                    hit = (read_x86_hit if wow64 else read_x64_hit)(pid, tid)
                     if hit is not None:
-                        hits += 1
-                        if on_hit(hit):
-                            kernel32.ContinueDebugEvent(pid, tid, DBG_CONTINUE)
-                            return {
-                                "attached": stats_attached,
-                                "hits": hits,
-                                "breakpoint_events": breakpoint_events,
-                                "armed_threads": len(armed),
-                                "software_breakpoints": software_armed,
-                            }
-                    addrs = addresses_for_pid(pid)
-                    if addrs:
-                        set_execute_breakpoints(tid, addrs[:4], wow64)
-                    status = DBG_CONTINUE
+                        stats["hits"] += 1
+                        done = on_hit(hit)
                 else:
                     status = DBG_EXCEPTION_NOT_HANDLED
+            elif code == DEBUG_EVENT_EXIT_THREAD:
+                bindings.pop((pid, tid), None)
             elif code == DEBUG_EVENT_EXIT_PROCESS:
-                restore_software_breakpoints(software, pid)
                 attached.discard(pid)
-            kernel32.ContinueDebugEvent(pid, tid, status)
-        return {
-            "attached": stats_attached,
-            "hits": hits,
-            "breakpoint_events": breakpoint_events,
-            "armed_threads": len(armed),
-            "software_breakpoints": software_armed,
-        }
+                for key in [key for key in bindings if key[0] == pid]:
+                    bindings.pop(key, None)
+            pending = (pid, tid, status)
+            if done:
+                break  # cleanup clears the breakpoint before continuing this event
+            if not kernel32.ContinueDebugEvent(*pending):
+                stats["continue_failed"] += 1
+                raise OSError("Could not continue debug event")
+            pending = None
+        return stats
     finally:
-        restore_software_breakpoints(software)
-        for pid in list(attached):
-            for thread in list_threads(pid):
-                clear_execute_breakpoints(thread.tid, wow64)
-            kernel32.DebugActiveProcessStop(pid)
-        kernel32.DebugSetProcessKillOnExit(False)
+        try:
+            for pid in list(attached):
+                for thread in list_threads(pid):
+                    if (pid, thread.tid) in bindings and not clear_execute_breakpoints(thread.tid, wow64):
+                        stats["clear_failed"] += 1
+        finally:
+            if pending is not None and not kernel32.ContinueDebugEvent(*pending):
+                stats["continue_failed"] += 1
+            for pid in list(attached):
+                if kernel32.DebugActiveProcessStop(pid):
+                    stats["detached"] += 1
+                else:
+                    stats["detach_failed"] += 1

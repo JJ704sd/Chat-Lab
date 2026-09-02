@@ -18,6 +18,7 @@ from .wecom_pipeline import (
     discover_wecom_accounts,
     import_decrypted_directory,
     run_single_capture,
+    import_normalized_jsonl,
 )
 from .wecom_storage import WecomLocalStorage
 from .wecom_exporter import export_issues_to_csv, export_issues_to_json
@@ -39,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     imp_off.add_argument("--account-id", default="offline_reference", help="指定账号标签 (默认 offline_reference)")
     imp_off.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB, help="分析结果数据库路径")
     imp_off.add_argument("--semantic", action="store_true", help="启用 MiniMax-M3 LLM 增强语义分析与方案评估")
+    imp_off.add_argument("--full", action="store_true", help="从源库首条重放，不使用增量游标")
+    imp_off.add_argument("--conversation-name", help="仅导入匹配的主群及其嵌套消息，自动从头重放")
 
     # 3. capture-once
     cap = sub.add_parser("capture-once", help="对指定账号执行单次一致性快照与解密导入")
@@ -47,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     cap.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
     cap.add_argument("--keyring", type=Path, help="指定 DPAPI keyring 路径")
     cap.add_argument("--semantic", action="store_true", help="启用 MiniMax-M3 LLM 增强语义分析")
+    cap.add_argument("--full", action="store_true", help="从源库首条重放，不使用增量游标")
+    cap.add_argument("--conversation-name", help="匹配主群及其嵌套消息，自动从头重放")
 
     # 4. watch
     wt = sub.add_parser("watch", help="定时增量采集指定账号企微消息")
@@ -60,6 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
     reb = sub.add_parser("rebuild", help="对已有消息重新运行分析分类与回复评估")
     reb.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
     reb.add_argument("--semantic", action="store_true", help="启用 MiniMax-M3 LLM 增强语义分析")
+    reb.add_argument("--account-id")
+
+    normalized = sub.add_parser("import-jsonl", help="导入规范化消息或展开后的合并转发记录")
+    normalized.add_argument("path", type=Path)
+    normalized.add_argument("--account-id", required=True)
+    normalized.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    normalized.add_argument("--semantic", action="store_true")
 
     # 6. query
     qry = sub.add_parser("query", help="查询物流问题、回复方案及证据")
@@ -76,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
     sum_p.add_argument("--subject", choices=["zhongji", "other", "unknown"])
     sum_p.add_argument("--account-id")
 
+    report_p = sub.add_parser("report", help="导出按提问去重的完整时序、指标与全部消息证据")
+    report_p.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    report_p.add_argument("--account-id")
+    report_p.add_argument("--output", type=Path, default=DEFAULT_EXPORTS_DIR / "report")
+
     # 7. export
     exp = sub.add_parser("export", help="导出物流问题与回复证据链到 CSV / JSON")
     exp.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
@@ -85,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
     exp.add_argument("--subject", choices=["zhongji", "other", "unknown"])
     exp.add_argument("--category")
     exp.add_argument("--status")
+    exp.add_argument("--account-id")
+
+    for command in (reb, normalized, qry, sum_p, exp, report_p):
+        command.add_argument("--conversation-name", help="模糊匹配主群名称并包含嵌套消息，例如：中技AI cosplay")
+    for command in (reb, qry, sum_p, exp, report_p):
+        command.add_argument("--conversation-id", help="匹配主会话 ID 及其嵌套消息；同名群可配合账号区分")
 
     # 8. serve
     srv = sub.add_parser("serve", help="启动本地 Web 交互查询界面 (仅监听 127.0.0.1)")
@@ -99,6 +122,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    scope = {key: getattr(args, key, None) for key in ("account_id", "conversation_id", "conversation_name")}
+
+    if args.subcommand == "report":
+        from .wecom_report import write_report
+        storage = WecomLocalStorage(args.analysis_db)
+        storage.initialize()
+        report = storage.get_report(**scope)
+        print(json.dumps({"files": write_report(report, args.output), "coverage": report["coverage"]}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.subcommand == "import-jsonl":
+        result = import_normalized_jsonl(args.path, account_id=args.account_id,
+            analysis_db_path=args.analysis_db, conversation_name=args.conversation_name, use_semantic=args.semantic)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
     if args.subcommand == "discover":
         accounts = discover_wecom_accounts(args.wecom_root)
         print(json.dumps(accounts, ensure_ascii=False, indent=2))
@@ -110,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
             account_id=args.account_id,
             analysis_db_path=args.analysis_db,
             use_semantic=getattr(args, "semantic", False),
+            full_replay=args.full,
+            conversation_name=args.conversation_name,
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
@@ -121,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
             analysis_db_path=args.analysis_db,
             keyring_path=args.keyring,
             use_semantic=getattr(args, "semantic", False),
+            full_replay=args.full,
+            conversation_name=args.conversation_name,
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("success") else 1
@@ -145,14 +188,14 @@ def main(argv: list[str] | None = None) -> int:
         storage = WecomLocalStorage(args.analysis_db)
         storage.initialize()
         analyzer = WecomSemanticAnalyzer() if args.semantic else None
-        res = storage.rebuild_analysis(semantic_analyzer=analyzer)
+        res = storage.rebuild_analysis(semantic_analyzer=analyzer, **scope)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
 
     if args.subcommand == "summary":
         storage = WecomLocalStorage(args.analysis_db)
         storage.initialize()
-        res = storage.get_summary(account_id=args.account_id, subject=args.subject)
+        res = storage.get_summary(subject=args.subject, **scope)
         sys.stdout.buffer.write(json.dumps(res, ensure_ascii=False, indent=2).encode("utf-8"))
         sys.stdout.buffer.write(b"\n")
         return 0
@@ -161,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         storage = WecomLocalStorage(args.analysis_db)
         storage.initialize()
         items = storage.list_issues(
-            account_id=args.account_id,
+            **scope,
             subject=args.subject,
             category=args.category,
             status=args.status,
@@ -175,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         storage = WecomLocalStorage(args.analysis_db)
         storage.initialize()
         items = storage.list_issues(
+            **scope,
             subject=args.subject,
             category=args.category,
             status=args.status,

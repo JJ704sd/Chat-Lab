@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -21,12 +23,65 @@ from .wecom_paths import (
 )
 from .wecom_snapshot import capture_consistent_snapshot
 from .wecom_decrypter import decrypt_and_verify_snapshot
-from .wecom_parser import WecomLocalParser
+from .wecom_parser import WecomLocalParser, WecomUnifiedRecord, records_from_message_tree
 from .wecom_storage import WecomLocalStorage
 from .wecom_exporter import export_issues_to_csv, export_issues_to_json
 from .wecom_subject import WecomSubjectClassifier
 from .wecom_semantic import WecomSemanticAnalyzer, WecomSemanticSettings
 from ..secrets import KeyRing, KeyRecord
+from .windows_memory import zero_secret
+
+
+def import_normalized_jsonl(
+    path: Path | str, *, account_id: str,
+    analysis_db_path: Path | str = DEFAULT_ANALYSIS_DB,
+    conversation_name: str | None = None, use_semantic: bool = False,
+) -> dict[str, Any]:
+    """Import explicit normalized messages; never invent forwarded authors or timestamps.
+
+    Forwarded collections have isolated conversation IDs and parent evidence references.
+    All input is validated before any database write. Repeated imports are idempotent.
+    """
+    source = Path(path)
+    records, gaps = [], []
+    root_conversations = set()
+    provenance = {"origin": "normalized_unverified", "file": str(source.resolve()),
+                  "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
+    for line_number, line in enumerate(source.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if line.strip():
+            item = json.loads(line)
+            if not isinstance(item, dict):
+                raise ValueError(f"{source.name}:{line_number}: 消息必须是对象")
+            conversation = item.get("conversation_id") or item.get("room_id")
+            name = item.get("conversation_name")
+            if not conversation or not name:
+                raise ValueError(f"{source.name}:{line_number}: 缺少会话 ID 或名称")
+            if conversation_name and conversation_name.casefold() not in str(name).casefold():
+                continue
+            root_conversations.add(str(conversation))
+            decoded, missing = records_from_message_tree([item], account_id=account_id,
+                source_database="normalized-jsonl", conversation_id=str(conversation),
+                conversation_name=str(name), source_reference=f"{source.name}:{line_number}",
+                provenance=provenance)
+            records.extend(decoded)
+            gaps.extend(missing)
+    # Conflicting original IDs must never silently replace a different message.
+    seen = {}
+    for record in records:
+        comparable = record.as_dict()
+        comparable.pop("source_reference")
+        if record.id in seen and seen[record.id] != comparable:
+            raise ValueError(f"重复消息 ID 内容冲突: {record.message_id}")
+        seen[record.id] = comparable
+    storage = WecomLocalStorage(analysis_db_path)
+    storage.initialize()
+    count = storage.upsert_messages(records)
+    analyzer = WecomSemanticAnalyzer() if use_semantic else None
+    reports = [storage.rebuild_analysis(analyzer, account_id=account_id, conversation_id=conversation)
+               for conversation in sorted(root_conversations)]
+    return {"imported_messages": count, "conversations": len(reports), "analysis": reports,
+            "gaps": gaps, "source_verified": False,
+            "unexpanded_forwards": sum(r.parse_status == "unexpanded_forward" for r in records)}
 
 
 def discover_wecom_accounts(wecom_root: Path | str | None = None) -> list[dict[str, Any]]:
@@ -73,6 +128,8 @@ def import_decrypted_directory(
     account_id: str = "offline_reference",
     analysis_db_path: Path | str | None = None,
     use_semantic: bool = False,
+    full_replay: bool = False,
+    conversation_name: str | None = None,
 ) -> dict[str, Any]:
     """Offline import from already decrypted databases directory (e.g. reference package)."""
     db_dir = Path(db_dir)
@@ -90,38 +147,43 @@ def import_decrypted_directory(
     storage = WecomLocalStorage(storage_path)
     storage.initialize()
 
-    msg_conn = sqlite3.connect(str(msg_db))
-    msg_conn.row_factory = sqlite3.Row
-    user_conn = sqlite3.connect(str(user_db)) if user_db.is_file() else None
-    if user_conn:
-        user_conn.row_factory = sqlite3.Row
-    sess_conn = sqlite3.connect(str(session_db)) if session_db.is_file() else None
-    if sess_conn:
-        sess_conn.row_factory = sqlite3.Row
-    comp_conn = sqlite3.connect(str(company_db)) if company_db.is_file() else None
-    if comp_conn:
-        comp_conn.row_factory = sqlite3.Row
-
+    connections, snapshots = {}, {}
     try:
+        for path in (msg_db, user_db, session_db, company_db):
+            if not path.is_file():
+                continue
+            snap = capture_consistent_snapshot(path, account_id)
+            plain, verification = decrypt_and_verify_snapshot(snap, None)
+            if not verification.is_valid or plain is None:
+                raise ValueError(f"{path.name}: {verification.error}")
+            conn = sqlite3.connect(":memory:")
+            conn.deserialize(plain)
+            conn.row_factory = sqlite3.Row
+            connections[path.name] = conn
+            snapshots[path.name] = {"file": str(path.resolve()), "db_sha256": snap.db_hash,
+                                    "wal_sha256": snap.wal_hash, "integrity_ok": verification.integrity_ok}
         parser = WecomLocalParser()
-        since_seq, since_msg_id = storage.get_cursor(account_id, "message.db")
+        since_seq, since_msg_id = (0, "") if full_replay or conversation_name else storage.get_cursor(account_id, "message.db")
         records, new_seq, new_msg_id = parser.parse_databases(
             account_id=account_id,
-            message_conn=msg_conn,
-            user_conn=user_conn,
-            session_conn=sess_conn,
-            company_conn=comp_conn,
+            message_conn=connections["message.db"],
+            user_conn=connections.get("user.db"),
+            session_conn=connections.get("session.db"),
+            company_conn=connections.get("company.db"),
             since_sequence=since_seq,
             since_message_id=since_msg_id,
         )
-
+        records = [replace(r, provenance={**r.provenance, "snapshots": snapshots}) for r in records
+                   if not conversation_name or conversation_name.casefold() in r.conversation_name.casefold()]
         upserted = storage.upsert_messages(records)
-        storage.set_cursor(account_id, "message.db", new_seq, new_msg_id)
+        if not conversation_name:
+            storage.set_cursor(account_id, "message.db", new_seq, new_msg_id)
 
         semantic_analyzer = None
         if use_semantic:
             semantic_analyzer = WecomSemanticAnalyzer()
-        analysis_result = storage.rebuild_analysis(semantic_analyzer=semantic_analyzer)
+        analysis_result = storage.rebuild_analysis(semantic_analyzer=semantic_analyzer, account_id=account_id,
+                                                   conversation_name=conversation_name)
 
         return {
             "success": True,
@@ -129,15 +191,12 @@ def import_decrypted_directory(
             "imported_messages": upserted,
             "analysis": analysis_result,
             "storage_path": str(storage_path),
+            "snapshots": snapshots,
+            "full_replay": full_replay or bool(conversation_name),
         }
     finally:
-        msg_conn.close()
-        if user_conn:
-            user_conn.close()
-        if sess_conn:
-            sess_conn.close()
-        if comp_conn:
-            comp_conn.close()
+        for conn in connections.values():
+            conn.close()
 
 
 def run_single_capture(
@@ -146,6 +205,8 @@ def run_single_capture(
     analysis_db_path: Path | str | None = None,
     keyring_path: Path | str | None = None,
     use_semantic: bool = False,
+    full_replay: bool = False,
+    conversation_name: str | None = None,
 ) -> dict[str, Any]:
     """Performs consistent snapshot, decrypts with DPAPI saved key, parses, and updates storage."""
     root = Path(wecom_root) if wecom_root else DEFAULT_WECOM_ROOT
@@ -163,66 +224,74 @@ def run_single_capture(
 
     # Retrieve key from DPAPI
     keyring_file = Path(keyring_path) if keyring_path else account_keyring_path(account_id)
-    raw_key = None
-    if keyring_file.is_file():
-        kr = KeyRing(keyring_file)
-        raw_key = kr.get(f"wecom:{account_id}:message") or kr.get(account_id)
+    kr = KeyRing(keyring_file) if keyring_file.is_file() else None
 
     # Capture snapshots for message, user, session
-    snapshots_dir = account_snapshot_dir(account_id)
+    snapshots_dir = storage_path.parent / "accounts" / account_id / "snapshots" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     snapshots_dir.mkdir(parents=True, exist_ok=True)
 
     decrypted_conns: dict[str, sqlite3.Connection] = {}
-    db_names = ["message.db", "user.db", "session.db"]
-
-    for name in db_names:
-        db_file = data_dir / name
-        if not db_file.is_file():
-            continue
-
-        snap = capture_consistent_snapshot(db_file, account_id)
-        plain_bytes, verif = decrypt_and_verify_snapshot(snap, bytes(raw_key) if raw_key else None)
-
-        if not verif.is_valid or plain_bytes is None:
-            return {
-                "success": False,
-                "error": f"Decryption/verification failed for {name}: {verif.error}",
-                "account_id": account_id,
-            }
-
-        conn = sqlite3.connect(":memory:")
-        conn.deserialize(plain_bytes)
-        conn.row_factory = sqlite3.Row
-        decrypted_conns[name] = conn
-
-    if "message.db" not in decrypted_conns:
-        return {"success": False, "error": "message.db could not be opened", "account_id": account_id}
-
+    snapshots = {}
     try:
+        for name in ("message.db", "user.db", "session.db", "company.db"):
+            db_file = data_dir / name
+            if not db_file.is_file():
+                continue
+            snap = capture_consistent_snapshot(db_file, account_id)
+            raw_key = (kr.get(f"wecom:{account_id}:{Path(name).stem}") or
+                       kr.get(f"wecom:{account_id}:message") or kr.get(account_id)) if kr else None
+            try:
+                plain_bytes, verif = decrypt_and_verify_snapshot(snap, bytes(raw_key) if raw_key else None)
+            finally:
+                if raw_key is not None:
+                    zero_secret(raw_key)
+            for suffix, data in (("", snap.db_bytes), ("-wal", snap.wal_bytes), ("-shm", snap.shm_bytes)):
+                if data is not None:
+                    (snapshots_dir / (name + suffix)).write_bytes(data)
+            snapshots[name] = {"source_file": str(db_file), "snapshot_file": str(snapshots_dir / name),
+                               "db_sha256": snap.db_hash, "wal_sha256": snap.wal_hash,
+                               "consistent": snap.is_consistent, "integrity_ok": verif.integrity_ok,
+                               "verified": verif.is_valid, "error": verif.error}
+            (snapshots_dir / "manifest.json").write_text(json.dumps(snapshots, ensure_ascii=False, indent=2), encoding="utf-8")
+            if not verif.is_valid or plain_bytes is None:
+                return {"success": False, "error": f"Decryption/verification failed for {name}: {verif.error}",
+                        "account_id": account_id, "snapshots": snapshots}
+            conn = sqlite3.connect(":memory:")
+            conn.deserialize(plain_bytes)
+            conn.row_factory = sqlite3.Row
+            decrypted_conns[name] = conn
+        if "message.db" not in decrypted_conns:
+            return {"success": False, "error": "message.db could not be opened", "account_id": account_id}
         parser = WecomLocalParser()
-        since_seq, since_msg_id = storage.get_cursor(account_id, "message.db")
+        since_seq, since_msg_id = (0, "") if full_replay or conversation_name else storage.get_cursor(account_id, "message.db")
         records, new_seq, new_msg_id = parser.parse_databases(
             account_id=account_id,
             message_conn=decrypted_conns["message.db"],
             user_conn=decrypted_conns.get("user.db"),
             session_conn=decrypted_conns.get("session.db"),
+            company_conn=decrypted_conns.get("company.db"),
             since_sequence=since_seq,
             since_message_id=since_msg_id,
         )
-
+        records = [replace(r, provenance={**r.provenance, "snapshots": snapshots}) for r in records
+                   if not conversation_name or conversation_name.casefold() in r.conversation_name.casefold()]
         upserted = storage.upsert_messages(records)
-        storage.set_cursor(account_id, "message.db", new_seq, new_msg_id)
+        if not conversation_name:
+            storage.set_cursor(account_id, "message.db", new_seq, new_msg_id)
 
         semantic_analyzer = None
         if use_semantic:
             semantic_analyzer = WecomSemanticAnalyzer()
-        analysis_result = storage.rebuild_analysis(semantic_analyzer=semantic_analyzer)
+        analysis_result = storage.rebuild_analysis(semantic_analyzer=semantic_analyzer, account_id=account_id,
+                                                   conversation_name=conversation_name)
 
         return {
             "success": True,
             "account_id": account_id,
             "new_messages": upserted,
             "analysis": analysis_result,
+            "snapshots": snapshots,
+            "full_replay": full_replay or bool(conversation_name),
         }
     finally:
         for c in decrypted_conns.values():

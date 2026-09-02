@@ -50,6 +50,9 @@ def decrypt_and_verify_snapshot(
     - Core tables extraction
     - PRAGMA integrity_check
     """
+    if not snapshot.is_consistent:
+        return None, DecryptVerificationResult(False, False, 0, [], False, "",
+                                                "Snapshot consistency check failed")
     if not snapshot.db_bytes or len(snapshot.db_bytes) < 4096:
         return None, DecryptVerificationResult(
             is_valid=False,
@@ -69,8 +72,9 @@ def decrypt_and_verify_snapshot(
                 plain_bytes = decrypt_database_bytes(
                     snapshot.db_bytes, b"\x00" * 16, wal_bytes=snapshot.wal_bytes
                 )
-            except Exception:
-                plain_bytes = snapshot.db_bytes
+            except Exception as exc:
+                return None, DecryptVerificationResult(False, True, 0, [], False, "",
+                                                        f"WAL merge failed: {exc}")
         sanitized = sanitize_wal_header_for_deserialize(plain_bytes)
         return sanitized, _verify_plain_sqlite_bytes(sanitized, is_plain=True)
 

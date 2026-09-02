@@ -6,9 +6,6 @@ from pathlib import Path
 import re
 from typing import Any, Sequence
 
-from .wecom_storage import WecomLocalStorage
-
-
 def mask_sensitive_text(text: str) -> str:
     """Masks phone numbers, ID cards, specific customer names, and bank accounts."""
     if not text:
@@ -20,6 +17,21 @@ def mask_sensitive_text(text: str) -> str:
     # Mask bank card numbers (16-19 digits)
     text = re.sub(r"(?<!\d)(\d{4})\d{8,11}(\d{4})(?!\d)", r"\1****\2", text)
     return text
+
+
+def _masked(value: Any) -> Any:
+    if isinstance(value, str):
+        return mask_sensitive_text(value)
+    if isinstance(value, dict):
+        result = {key: _masked(item) for key, item in value.items()}
+        for key in ("question_sender_name", "responder_name"):
+            name = result.get(key)
+            if name:
+                result[key] = name[0] + "**"
+        return result
+    if isinstance(value, list):
+        return [_masked(item) for item in value]
+    return value
 
 
 def export_issues_to_csv(
@@ -53,6 +65,9 @@ def export_issues_to_csv(
         "packages",
         "weight",
         "volume",
+        "pickup_address", "destination", "dimensions", "price_quote", "currency", "delivery_time",
+        "first_response_seconds", "solution_seconds", "urgency_level", "risk_reason", "analysis_source",
+        "account_id", "conversation_id",
         "conversation_name",
         "source_reference",
     ]
@@ -61,23 +76,22 @@ def export_issues_to_csv(
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for item in issues:
-            row = dict(item)
+            row = _masked(item) if anonymize else dict(item)
             clues = row.get("clues") or {}
+            response_clues = row.get("response_clues") or {}
             row["waybill_no"] = clues.get("waybill_no") or ""
             row["packages"] = clues.get("packages") or ""
             row["weight"] = clues.get("weight") or ""
             row["volume"] = clues.get("volume") or ""
+            for key in ("pickup_address", "destination", "dimensions", "urgency_level", "analysis_source"):
+                row[key] = clues.get(key)
+            for key in ("price_quote", "currency", "delivery_time"):
+                row[key] = response_clues.get(key) or clues.get(key)
+            row["risk_reason"] = (clues.get("risk_evaluation") or {}).get("risk_reason")
 
-            if anonymize:
-                row["question_raw_text"] = mask_sensitive_text(str(row.get("question_raw_text") or ""))
-                row["responder_raw_text"] = mask_sensitive_text(str(row.get("responder_raw_text") or ""))
-                if row.get("question_sender_name"):
-                    name = str(row["question_sender_name"])
-                    row["question_sender_name"] = name[0] + "**" if len(name) > 1 else name
-                if row.get("responder_name"):
-                    name = str(row["responder_name"])
-                    row["responder_name"] = name[0] + "**" if len(name) > 1 else name
-            writer.writerow(row)
+            # Chat text is data, including when opened by a spreadsheet application.
+            writer.writerow({key: "'" + value if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value
+                             for key, value in row.items()})
 
     return out
 
@@ -93,16 +107,7 @@ def export_issues_to_json(
 
     rows = []
     for item in issues:
-        row = dict(item)
-        if anonymize:
-            row["question_raw_text"] = mask_sensitive_text(str(row.get("question_raw_text") or ""))
-            row["responder_raw_text"] = mask_sensitive_text(str(row.get("responder_raw_text") or ""))
-            if row.get("question_sender_name"):
-                name = str(row["question_sender_name"])
-                row["question_sender_name"] = name[0] + "**" if len(name) > 1 else name
-            if row.get("responder_name"):
-                name = str(row["responder_name"])
-                row["responder_name"] = name[0] + "**" if len(name) > 1 else name
+        row = _masked(item) if anonymize else dict(item)
         rows.append(row)
 
     with open(out, "w", encoding="utf-8") as f:

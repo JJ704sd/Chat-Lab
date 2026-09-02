@@ -145,8 +145,8 @@ def capture_consistent_snapshot(
             and db_stat_1.st_mtime_ns == db_stat_2.st_mtime_ns
             and len(db_data) == db_stat_1.st_size
         )
-        wal_stable = True
-        if wal_path.is_file():
+        wal_stable = (wal_stat_1 is None) == (wal_stat_2 is None)
+        if wal_stat_1 is not None or wal_stat_2 is not None:
             if wal_stat_1 is None or wal_stat_2 is None:
                 wal_stable = False
             else:
@@ -156,7 +156,14 @@ def capture_consistent_snapshot(
                     and (wal_data is not None and len(wal_data) == wal_stat_1.st_size)
                 )
 
-        if db_stable and wal_stable:
+        # A second complete read also detects same-size rewrites and WAL/SHM
+        # appearance/disappearance; stat-only stability is insufficient.
+        same_bytes = (
+            db_data == db_path.read_bytes()
+            and wal_data == (wal_path.read_bytes() if wal_path.is_file() else None)
+            and shm_data == (shm_path.read_bytes() if shm_path.is_file() else None)
+        )
+        if db_stable and wal_stable and same_bytes:
             # Check WAL committed structure if WAL exists
             is_wal_ok = True
             wal_analysis_meta = {}

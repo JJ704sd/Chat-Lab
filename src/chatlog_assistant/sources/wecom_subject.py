@@ -6,7 +6,7 @@ import unicodedata
 from typing import Mapping
 
 
-_SUBJECT_SUFFIX = re.compile(r"(?:^|\s)@(?P<subject>[^@\s]+)\s*$")
+_SUBJECT_SUFFIX = re.compile(r"@\s*(?P<subject>[^@\s\r\n]+)\s*$")
 
 
 def normalize_corp_name(value: str) -> str:

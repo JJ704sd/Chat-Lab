@@ -116,13 +116,94 @@ uv run chatlog-assistant --source wecom analyze --semantic
 uv run chatlog-assistant wecom-local discover
 
 # 导入已解密的数据库目录（离线参考包/回填）
-uv run chatlog-assistant wecom-local import --db-dir _tmp_wechat_extract/wechat/wxwork_csv/decrypted/ --account offline_ref --semantic
+uv run chatlog-assistant wecom-local import-offline --db-dir _tmp_wechat_extract/wechat/wxwork_csv/decrypted/ --account-id offline_ref --semantic
 
 # 启动本地可视化仪表盘（端口 8767）
 uv run chatlog-assistant wecom-local serve --port 8767
 
 # 导出物流问题记录并自动进行隐私脱敏
-uv run chatlog-assistant wecom-local export --format csv --mask --output exports/issues.csv
+uv run chatlog-assistant wecom-local export --format csv --anonymize --output exports/issues.csv
+```
+
+## 指定群的信息提取与上下文分析
+
+`wecom-local` 页面默认按名称模糊筛选“中技AI cosplay”；同名群可加账号 ID 和会话 ID。
+统计与导出使用相同筛选条件。指定群重建仅替换该群派生分析，不清空其他群的结果。
+
+```powershell
+uv run chatlog-assistant wecom-local rebuild --conversation-name "中技AI cosplay"
+uv run chatlog-assistant wecom-local query --conversation-name "中技AI cosplay"
+# 明确启用外部模型时，才将该群的有限上下文发送给配置的 MiniMax 接口
+uv run chatlog-assistant wecom-local rebuild --conversation-name "中技AI cosplay" --semantic
+uv run chatlog-assistant wecom-local serve --port 8767
+```
+
+分析保留件数（含 PLT）、重量、体积、尺寸、提货地址、目的地、报价、币种和时效原文。
+“620隔日达”中的币种为未知，不自动填人民币。规则优先处理明确物流诉求、即时响应和方案；
+模糊诉求与一般回复交由 LLM，附带同账号同会话最近最多 12 条、4 小时内的上下文。
+模型不能更改主体，输出的业务字段、紧急和客诉风险证据须出现在当前发言原文中；
+未知消息 ID、越界引用、非法结果或调用失败均保留规则结果，并返回 `semantic_errors` 计数。
+
+回复按原始引用 ID、引用正文与作者、运单号、精确 @发送者关联；没有这些依据时，只在 4 小时内存在唯一未给出方案的提问时关联。
+即时响应的弱关联窗口为 5 分钟；多笔候选时可暂关联最近开放问题，并保留复核标记。明确 ID / 完整引用可跨越 4 小时窗口；报价存在多笔候选时不强行归属。
+“马上”不是方案，报价不会自动解决提货安排；`solved` 在页面中表示“已有相关方案”，不代表运输已完成。
+`first_response_seconds`、`first_ack_seconds`、`solution_seconds`、`final_solution_seconds`
+分别表示首条有效关联回复、明确即时确认、首个方案、最后一个方案耗时。直接报价不补造确认时间。
+尚未设定业务 SLA 阈值，因此不擅自标记“超时”。分类条目数与去重提问数分别统计。
+
+也可导入规范化 JSONL：每行提供 `source_message_id`、`conversation_id`、`conversation_name`、
+带时区的 `sent_at`、`sender_display` 和 `content`；可选 `sender_id`、`sender_corp_name`、
+`content_type`、`reply_to_message_id`。默认主体仍由身份元数据决定，正文 @提及不参与。
+
+```powershell
+uv run chatlog-assistant wecom-local import-jsonl your-chat.jsonl --account-id your-account --conversation-name "中技AI cosplay"
+```
+
+合并转发的 `forwarded_messages` 可多层嵌套，不再限制单层。每条子消息保留自己的 ID、
+发送者、带时区时间和正文；卡片单独保存，子会话彼此隔离。根群筛选会保留名称不同的子群，
+原子群名称放在来源信息中。缺少身份或时间的旧格式结构容器会报告缺口，不伪造消息时间。
+
+原始解包器迭代遍历 Protobuf 长度字段，在 `content` 和 `extra_content` 中识别显式 JSON
+`forwarded_messages` 和 XML `recordinfo/datalist/dataitem`（含嵌套 `recorditem`）。未知二进制布局、
+远程附件和仅有预览的记录不会被当作已展开。旧本地原库的类型 40 实测包含通话记录，
+因此不能仅凭 40/49 编号判定合并转发。2026-09-02 已核验目标群真实类型 4 的原生载荷：
+重复字段 1 是子消息，节点字段 1/2/11/13/14/101 分别保留作者、时间、名称、企业及正文，
+字段 10 是原会话 ID，不能误作原消息 ID。缺失原消息 ID 时使用明确标记的载荷位置键。
+原生引用元数据不重复计为消息；嵌套字段继续递归，损坏字段标记为部分展开。
+
+数据库使用可重复执行的增量扩展，新增 `parent_id`、`root_message_id`、`nesting_depth`、
+`provenance_json`；旧行采用空来源和深度 0，不因此被标为原库验证通过。旧列、旧查询接口保留，
+无删除或重命名迁移。新版写入仍满足旧版列约束；旧版不理解新增证据字段，不应用于重建递归证据。
+迁移前应使用 SQLite backup 留存数据库。业务线索新增多组规格、特殊货物和单证字段，缺失值为 null。
+
+采集和离线导入均对 `.db/-wal/-shm` 做重复读取一致性检查，在内存副本中合并已提交 WAL 并执行
+`integrity_check`。不一致或解密失败会停止该批入库。`capture-once` 保存快照文件及哈希清单，
+`--full` 用于解析器升级后从头重放；按群采集自动从头扫描且不推进账号全局游标。
+
+```powershell
+uv run chatlog-assistant wecom-local capture-once --account-id ACCOUNT_ID --full --conversation-name "中技AI cosplay"
+uv run chatlog-assistant wecom-local import-offline --db-dir DECRYPTED_DIR --account-id ACCOUNT_ID --full --conversation-name "中技AI cosplay"
+uv run chatlog-assistant wecom-local report --conversation-name "中技AI cosplay" --output data/wecom-local/exports/cosplay
+uv run chatlog-assistant wecom-local serve --port 8766
+```
+
+`/api/wecom/report` 与 `report` 导出提供不截断的全部已导入消息、去重提问轮次、所有关联回复、
+路线报价、特殊货物处理率和四种时延。页面保留类别明细；顶层指标按提问计数，以询价类别为主，
+已有方案不表示提货或运输完成。来源完整性单独展示，不由单元测试通过、导入成功或闭环率推断。
+JSONL 一律标为 `normalized_unverified`，不能自行宣称已获原库认证。
+同名群已存在真实数据库来源时，完整报告默认排除未核验材料；仍可按其账号单独查看。
+子范围报告用 `ancestors` 附带范围外父级证据，不额外计入当前消息数。页面、报告和 CSV 使用同一分析口径，
+展示层递归隐藏凭据与手机号，SQLite 内保留原始证据。
+
+本地分析交付与来源核验保存在 `data/wecom-local/exports/` 和 `data/wecom-local/audits/`，不纳入版本控制。
+解析契约、统计口径和验证方法见 `docs/wecom-recursive-analysis.md`；每次数据范围及限制以本地交付报告为准。
+
+`samples/wecom_cosplay_demo.jsonl` 是根据截图制作的脱敏演示数据，不是真实群聊导出。
+可使用独立数据库验证，避免与真实采集数据混合：
+
+```powershell
+uv run chatlog-assistant wecom-local import-jsonl samples/wecom_cosplay_demo.jsonl --account-id screenshot-demo --analysis-db data/wecom-cosplay-demo/analysis.db
+uv run chatlog-assistant wecom-local serve --analysis-db data/wecom-cosplay-demo/analysis.db --port 8770
 ```
 
 ## 隐私边界与安全规范

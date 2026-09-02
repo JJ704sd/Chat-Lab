@@ -9,6 +9,7 @@ import tempfile
 from urllib.parse import parse_qs, urlparse
 
 from .wecom_storage import WecomLocalStorage
+from .wecom_report import display_safe_value
 from .wecom_exporter import export_issues_to_csv, export_issues_to_json, mask_sensitive_text
 
 
@@ -44,9 +45,29 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         subject = query.get("subject", [None])[0] or None
         category = query.get("category", [None])[0] or None
         status = query.get("status", [None])[0] or None
+        conversation_scope = {key: query.get(key, [None])[0] or None
+                              for key in ("conversation_id", "conversation_name")}
+
+        if parsed.path in ("/api/wecom/report", "/api/wecom/report-export"):
+            report = self.storage.get_report(**conversation_scope, account_id=account_id,
+                                             subject=subject, category=category, status=status)
+            if parsed.path.endswith("report-export"):
+                if query.get("format", ["json"])[0] == "csv":
+                    from .wecom_report import write_report
+                    with tempfile.TemporaryDirectory() as directory:
+                        write_report(report, directory)
+                        data = (Path(directory) / "events.csv").read_bytes()
+                    self._send_attachment(data, "text/csv; charset=utf-8-sig", "wecom_events.csv")
+                else:
+                    self._send_attachment(json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8"),
+                                          "application/json; charset=utf-8", "wecom_report.json")
+            else:
+                self._send_json(report)
+            return
 
         if parsed.path == "/api/wecom/summary":
             summary = self.storage.get_summary(
+                **conversation_scope,
                 account_id=account_id,
                 subject=subject,
                 category=category,
@@ -55,8 +76,14 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_json(summary)
             return
 
+        if parsed.path == "/api/wecom/conversations":
+            convs = self.storage.list_conversations(account_id=account_id)
+            self._send_json({"items": convs, "total": len(convs)})
+            return
+
         if parsed.path == "/api/wecom/issues":
             items = self.storage.list_issues(
+                **conversation_scope,
                 account_id=account_id,
                 subject=subject,
                 category=category,
@@ -70,6 +97,7 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             fmt = query.get("format", ["csv"])[0].lower()
             anonymize = query.get("anonymize", ["0"])[0] in ("1", "true")
             items = self.storage.list_issues(
+                **conversation_scope,
                 account_id=account_id,
                 subject=subject,
                 category=category,
@@ -106,7 +134,7 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def _send_json(self, value: object) -> None:
-        data = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        data = json.dumps(display_safe_value(value), ensure_ascii=False).encode("utf-8")
         self._send_bytes(data, "application/json; charset=utf-8")
 
     def _send_attachment(self, data: bytes, content_type: str, filename: str) -> None:
