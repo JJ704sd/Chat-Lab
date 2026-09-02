@@ -107,10 +107,28 @@ uv run chatlog-assistant --source wecom analyze --semantic
 
 启用后会把截断后的消息正文发往 MiniMax 国内接口；聊天密钥仍只保存在本机 DPAPI。
 
-## 隐私边界
+## 企微本地多帐号分析与回填闭环 (`wecom-local`)
 
-- 服务默认仅允许本机访问。
-- 工作数据库和导入文件均保留在本机。
-- `discover`/`watch` 默认只读取路径名、大小和修改时间；页面不展示内部路径或密钥。
-- 通过验证的密钥只保存在对应工作区的 DPAPI 文件中（`data/wechat/keyring.dpapi`、`data/wecom/keyring.dpapi`），日志与 JSON 输出不得包含密钥十六进制。
+除 WxJava 官方会话存档链路外，支持通过 `wecom-local` 子命令实现已授权本地 WXWork 数据库的快照捕获、解密校验、Protobuf 深度解码、主体识别与双层语义分析闭环：
+
+```powershell
+# 发现本机企微登录帐号
+uv run chatlog-assistant wecom-local discover
+
+# 导入已解密的数据库目录（离线参考包/回填）
+uv run chatlog-assistant wecom-local import --db-dir _tmp_wechat_extract/wechat/wxwork_csv/decrypted/ --account offline_ref --semantic
+
+# 启动本地可视化仪表盘（端口 8767）
+uv run chatlog-assistant wecom-local serve --port 8767
+
+# 导出物流问题记录并自动进行隐私脱敏
+uv run chatlog-assistant wecom-local export --format csv --mask --output exports/issues.csv
+```
+
+## 隐私边界与安全规范
+
+- 服务默认仅允许本机 `127.0.0.1` 访问。
+- 工作数据库、解密缓存与导入文件均严格保留在本机，并通过 `.gitignore` 排除所有数据库文件（`*.db`、`*.sqlite`）、临时提取目录（`_tmp_wechat_extract/`）与凭据配置。
+- 手机号（`138****1234`）、身份证号、银行卡号等敏感信息在导出或输出时支持正则掩码脱敏。
+- 通过验证的密钥只保存在对应工作区的 DPAPI 文件中（`data/wechat/keyring.dpapi`、`data/wecom/keyring.dpapi`），日志与 JSON 输出严禁包含密钥十六进制或明文证书。
 - `encrypted_sources.py` 在缺少已授权提取器或 DPAPI 密钥时拒绝读取正文。

@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地企业微信物流聊天记录分析</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f9;
+      --card-bg: #ffffff;
+      --ink: #1e293b;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --brand: #2563eb;
+      --brand-soft: #eff6ff;
+      --zhongji: #ea580c;
+      --zhongji-soft: #fff7ed;
+      --other: #475569;
+      --other-soft: #f1f5f9;
+      --unknown: #94a3b8;
+      --unknown-soft: #f8fafc;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --danger: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: white;
+      padding: 24px 32px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    header .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #3b82f6;
+      color: white;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    header h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; }
+    header p { margin: 0; color: #94a3b8; font-size: 13px; }
+    main { max-width: 1440px; margin: 0 auto; padding: 24px; }
+    
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) auto;
+      gap: 12px;
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      margin-bottom: 20px;
+      align-items: end;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+    select, input, button {
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: white;
+      padding: 0 12px;
+      color: var(--ink);
+      font-size: 13px;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--brand); }
+    .btn-group { display: flex; gap: 8px; }
+    button.btn-primary {
+      cursor: pointer;
+      background: var(--brand);
+      color: white;
+      border: none;
+      font-weight: 600;
+      padding: 0 16px;
+    }
+    button.btn-secondary {
+      cursor: pointer;
+      background: #f8fafc;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      font-weight: 500;
+      padding: 0 14px;
+    }
+    button:hover { opacity: 0.92; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .card span { display: block; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .card strong { display: block; margin-top: 6px; font-size: 26px; font-weight: 700; color: var(--ink); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 18px;
+    }
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+      min-width: 0;
+    }
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .cat-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 9px 6px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .cat-item:hover { background: #f8fafc; }
+    .cat-item.active { font-weight: 700; color: var(--brand); }
+
+    .table-wrap { overflow-x: auto; max-height: 650px; }
+    table { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 13px; }
+    th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #f8fafc;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .tag-zhongji { background: var(--zhongji-soft); color: var(--zhongji); border: 1px solid #fed7aa; }
+    .tag-other { background: var(--other-soft); color: var(--other); border: 1px solid #cbd5e1; }
+    .tag-unknown { background: var(--unknown-soft); color: var(--unknown); border: 1px solid #e2e8f0; }
+    
+    .status-solved { color: var(--ok); font-weight: 600; }
+    .status-ack { color: var(--warn); font-weight: 600; }
+    .status-unreplied { color: var(--danger); font-weight: 600; }
+    .status-progress { color: var(--brand); font-weight: 600; }
+    
+    .clue-badge {
+      display: inline-block;
+      background: #f1f5f9;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+      color: #334155;
+      margin-top: 4px;
+      margin-right: 4px;
+    }
+
+    .empty { padding: 48px; text-align: center; color: var(--muted); }
+    small { color: var(--muted); font-size: 11px; }
+
+    @media (max-width: 1024px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="badge">Local Offline & Live Assistant</div>
+    <h1>企业微信物流聊天记录分析助手</h1>
+    <p>本地数据发现 · 一致性快照解密 · 主体严格分类 · 物流问题与回复证据链闭环</p>
+  </header>
+  <main>
+    <section class="toolbar">
+      <div class="field">
+        <label for="subjectSelect">发送者主体</label>
+        <select id="subjectSelect">
+          <option value="">全部主体</option>
+          <option value="zhongji">中技 (zhongji)</option>
+          <option value="other">其他企业 (other)</option>
+          <option value="unknown">待确认 (unknown)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="categorySelect">物流问题类别</label>
+        <select id="categorySelect">
+          <option value="">全部类别</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="statusSelect">解决状态</label>
+        <select id="statusSelect">
+          <option value="">全部状态</option>
+          <option value="unreplied">未回复 (unreplied)</option>
+          <option value="acknowledged">仅确认收到 (acknowledged)</option>
+          <option value="solved">已有方案 (solved)</option>
+          <option value="in_progress">处理中 (in_progress)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="accountInput">账号 ID</label>
+        <input type="text" id="accountInput" placeholder="可选过滤账号">
+      </div>
+      <div class="btn-group">
+        <button class="btn-primary" id="btnRefresh">刷新分析</button>
+        <button class="btn-secondary" id="btnExportCsv">导出 CSV</button>
+        <button class="btn-secondary" id="btnExportJson">导出 JSON</button>
+      </div>
+    </section>
+
+    <section class="cards">
+      <article class="card">
+        <span>识别物流问题总数</span>
+        <strong id="statTotal">0</strong>
+      </article>
+      <article class="card">
+        <span>已给出具体方案</span>
+        <strong id="statSolved" style="color: var(--ok)">0</strong>
+      </article>
+      <article class="card">
+        <span>仅确认收到 (未解决)</span>
+        <strong id="statAck" style="color: var(--warn)">0</strong>
+      </article>
+      <article class="card">
+        <span>未回复问题</span>
+        <strong id="statUnreplied" style="color: var(--danger)">0</strong>
+      </article>
+      <article class="card">
+        <span>涵盖问题类别数</span>
+        <strong id="statCatCount">0</strong>
+      </article>
+    </section>
+
+    <section class="grid-2">
+      <aside class="panel">
+        <h2>类别分布统计</h2>
+        <div id="categoryList"></div>
+      </aside>
+      <article class="panel">
+        <h2>物流问题、回复方案与证据链</h2>
+        <div class="table-wrap" id="issuesWrap"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    
+    function statusClass(st) {
+      if (st === 'solved') return 'status-solved';
+      if (st === 'acknowledged') return 'status-ack';
+      if (st === 'unreplied') return 'status-unreplied';
+      return 'status-progress';
+    }
+    function statusLabel(st) {
+      if (st === 'solved') return '已有方案 (已解决)';
+      if (st === 'acknowledged') return '仅确认收到';
+      if (st === 'unreplied') return '未回复';
+      if (st === 'in_progress') return '跟进中';
+      return st;
+    }
+
+    async function loadData() {
+      const subj = document.querySelector('#subjectSelect').value;
+      const cat = document.querySelector('#categorySelect').value;
+      const st = document.querySelector('#statusSelect').value;
+      const acc = document.querySelector('#accountInput').value.trim();
+
+      const params = new URLSearchParams();
+      if (subj) params.set('subject', subj);
+      if (cat) params.set('category', cat);
+      if (st) params.set('status', st);
+      if (acc) params.set('account_id', acc);
+
+      const [summaryRes, issuesRes] = await Promise.all([
+        fetch('/api/wecom/summary?' + params).then(r => r.json()).catch(() => ({})),
+        fetch('/api/wecom/issues?' + params).then(r => r.json()).catch(() => ({items:[]}))
+      ]);
+
+      // Update counters
+      document.querySelector('#statTotal').textContent = summaryRes.issue_count || 0;
+      document.querySelector('#statSolved').textContent = summaryRes.solved_count || 0;
+      document.querySelector('#statAck').textContent = summaryRes.ack_only_count || 0;
+      document.querySelector('#statUnreplied').textContent = (summaryRes.pending_count - (summaryRes.ack_only_count || 0)) || 0;
+      document.querySelector('#statCatCount').textContent = summaryRes.category_count || 0;
+
+      // Update category list & dropdown
+      const catListEl = document.querySelector('#categoryList');
+      const cats = summaryRes.categories || [];
+      if (cats.length) {
+        catListEl.innerHTML = cats.map(c => `
+          <div class="cat-item ${cat === c.category ? 'active' : ''}" onclick="selectCategory('${esc(c.category)}')">
+            <span>${esc(c.category)}</span>
+            <b>${c.count}</b>
+          </div>
+        `).join('');
+      } else {
+        catListEl.innerHTML = '<div class="empty">暂无统计数据</div>';
+      }
+
+      const catSelect = document.querySelector('#categorySelect');
+      const curCat = catSelect.value;
+      catSelect.innerHTML = '<option value="">全部类别</option>' + cats.map(c => `
+        <option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>
+      `).join('');
+      if ([...catSelect.options].some(o => o.value === curCat)) catSelect.value = curCat;
+
+      // Render issues table
+      const wrap = document.querySelector('#issuesWrap');
+      const items = issuesRes.items || [];
+      if (items.length) {
+        wrap.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 140px;">提出者 / 主体</th>
+                <th style="width: 110px;">类别 / 状态</th>
+                <th>提问内容与业务线索</th>
+                <th>回复人员 / 方案内容</th>
+                <th style="width: 100px;">关联证据</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(item => {
+                const subCls = item.question_subject_bucket === 'zhongji' ? 'tag-zhongji' : (item.question_subject_bucket === 'other' ? 'tag-other' : 'tag-unknown');
+                const subName = item.question_subject_bucket === 'zhongji' ? '中技' : (item.question_subject_bucket === 'other' ? '其他' : '未知');
+                
+                let clueBadges = '';
+                if (item.clues) {
+                  if (item.clues.waybill_no) clueBadges += `<span class="clue-badge">单号: ${esc(item.clues.waybill_no)}</span>`;
+                  if (item.clues.packages) clueBadges += `<span class="clue-badge">${esc(item.clues.packages)}</span>`;
+                  if (item.clues.weight) clueBadges += `<span class="clue-badge">${esc(item.clues.weight)}</span>`;
+                  if (item.clues.volume) clueBadges += `<span class="clue-badge">${esc(item.clues.volume)}</span>`;
+                }
+
+                return `
+                  <tr>
+                    <td>
+                      <strong>${esc(item.question_sender_name)}</strong><br>
+                      <span class="tag ${subCls}">${subName}${item.question_corp_name ? ' · ' + esc(item.question_corp_name) : ''}</span><br>
+                      <small>${esc(item.question_sent_at.slice(0, 16).replace('T', ' '))}</small>
+                    </td>
+                    <td>
+                      <b>${esc(item.category)}</b><br>
+                      <span class="${statusClass(item.issue_status)}">${statusLabel(item.issue_status)}</span>
+                    </td>
+                    <td>
+                      <div>${esc(item.question_raw_text)}</div>
+                      <div>${clueBadges}</div>
+                      <small style="color:#64748b;">群/会话: ${esc(item.conversation_name)}</small>
+                    </td>
+                    <td>
+                      ${item.responder_name ? `
+                        <strong>${esc(item.responder_name)}</strong> 
+                        <span class="tag ${item.responder_subject_bucket==='zhongji'?'tag-zhongji':'tag-other'}">${item.responder_subject_bucket==='zhongji'?'中技':'其他'}</span>
+                        <small>(${item.latency_seconds}秒后)</small><br>
+                        <div>${esc(item.responder_raw_text)}</div>
+                      ` : '<span class="status-unreplied">暂无回复</span>'}
+                    </td>
+                    <td>
+                      <small>
+                        依据: ${esc(item.association_basis || '无')}<br>
+                        引用: ${esc(item.source_reference || '')}
+                      </small>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        wrap.innerHTML = '<div class="empty">暂无匹配的物流问题记录</div>';
+      }
+    }
+
+    function selectCategory(cat) {
+      document.querySelector('#categorySelect').value = cat;
+      loadData();
+    }
+
+    document.querySelector('#btnRefresh').addEventListener('click', loadData);
+    document.querySelector('#subjectSelect').addEventListener('change', loadData);
+    document.querySelector('#categorySelect').addEventListener('change', loadData);
+    document.querySelector('#statusSelect').addEventListener('change', loadData);
+    
+    document.querySelector('#btnExportCsv').addEventListener('click', () => {
+      window.open('/api/wecom/export?format=csv&' + new URLSearchParams({
+        subject: document.querySelector('#subjectSelect').value,
+        category: document.querySelector('#categorySelect').value,
+        status: document.querySelector('#statusSelect').value,
+      }));
+    });
+    document.querySelector('#btnExportJson').addEventListener('click', () => {
+      window.open('/api/wecom/export?format=json&' + new URLSearchParams({
+        subject: document.querySelector('#subjectSelect').value,
+        category: document.querySelector('#categorySelect').value,
+        status: document.querySelector('#statusSelect').value,
+      }));
+    });
+
+    loadData();
+  </script>
+</body>
+</html>

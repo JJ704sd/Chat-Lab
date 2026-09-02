@@ -85,6 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="启动本地查询页面")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int)
+
+    wecom_local_parser = subparsers.add_parser("wecom-local", help="企业微信本地分析闭环子命令")
+    wecom_local_parser.add_argument("args", nargs=argparse.REMAINDER, help="wecom-local 子命令参数")
     return parser
 
 
@@ -319,4 +322,7 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             return 0
         return 0
+    if args.command == "wecom-local":
+        from .sources.wecom_cli import main as wecom_cli_main
+        return wecom_cli_main(args.args)
     return 2
