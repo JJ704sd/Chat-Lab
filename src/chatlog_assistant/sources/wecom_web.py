@@ -4,6 +4,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import sys
 import tempfile
 from urllib.parse import parse_qs, urlparse
 
@@ -152,7 +153,13 @@ def serve_wecom(
             "dashboard_bytes": dashboard_bytes,
         },
     )
-    server = ThreadingHTTPServer((host, port), handler)
+    ThreadingHTTPServer.allow_reuse_address = True
+    try:
+        server = ThreadingHTTPServer((host, port), handler)
+    except OSError as exc:
+        print(f"Error: 端口 {port} 已被占用，请先终止旧进程或指定新端口（例如 --port 8767）: {exc}", file=sys.stderr)
+        return
+
     print(f"dashboard\twecom-local\thttp://{host}:{port}\t{storage.path}", flush=True)
     try:
         server.serve_forever()

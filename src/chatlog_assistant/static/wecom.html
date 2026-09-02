@@ -272,6 +272,7 @@
 
   <script>
     const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const formatTime = t => t ? String(t).slice(0, 16).replace('T', ' ') : '-';
     
     function statusClass(st) {
       if (st === 'solved') return 'status-solved';
@@ -284,120 +285,126 @@
       if (st === 'acknowledged') return '仅确认收到';
       if (st === 'unreplied') return '未回复';
       if (st === 'in_progress') return '跟进中';
-      return st;
+      return st || '未知';
     }
 
     async function loadData() {
-      const subj = document.querySelector('#subjectSelect').value;
-      const cat = document.querySelector('#categorySelect').value;
-      const st = document.querySelector('#statusSelect').value;
-      const acc = document.querySelector('#accountInput').value.trim();
-
-      const params = new URLSearchParams();
-      if (subj) params.set('subject', subj);
-      if (cat) params.set('category', cat);
-      if (st) params.set('status', st);
-      if (acc) params.set('account_id', acc);
-
-      const [summaryRes, issuesRes] = await Promise.all([
-        fetch('/api/wecom/summary?' + params).then(r => r.json()).catch(() => ({})),
-        fetch('/api/wecom/issues?' + params).then(r => r.json()).catch(() => ({items:[]}))
-      ]);
-
-      // Update counters
-      document.querySelector('#statTotal').textContent = summaryRes.issue_count || 0;
-      document.querySelector('#statSolved').textContent = summaryRes.solved_count || 0;
-      document.querySelector('#statAck').textContent = summaryRes.ack_only_count || 0;
-      document.querySelector('#statUnreplied').textContent = (summaryRes.pending_count - (summaryRes.ack_only_count || 0)) || 0;
-      document.querySelector('#statCatCount').textContent = summaryRes.category_count || 0;
-
-      // Update category list & dropdown
-      const catListEl = document.querySelector('#categoryList');
-      const cats = summaryRes.categories || [];
-      if (cats.length) {
-        catListEl.innerHTML = cats.map(c => `
-          <div class="cat-item ${cat === c.category ? 'active' : ''}" onclick="selectCategory('${esc(c.category)}')">
-            <span>${esc(c.category)}</span>
-            <b>${c.count}</b>
-          </div>
-        `).join('');
-      } else {
-        catListEl.innerHTML = '<div class="empty">暂无统计数据</div>';
-      }
-
-      const catSelect = document.querySelector('#categorySelect');
-      const curCat = catSelect.value;
-      catSelect.innerHTML = '<option value="">全部类别</option>' + cats.map(c => `
-        <option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>
-      `).join('');
-      if ([...catSelect.options].some(o => o.value === curCat)) catSelect.value = curCat;
-
-      // Render issues table
       const wrap = document.querySelector('#issuesWrap');
-      const items = issuesRes.items || [];
-      if (items.length) {
-        wrap.innerHTML = `
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 140px;">提出者 / 主体</th>
-                <th style="width: 110px;">类别 / 状态</th>
-                <th>提问内容与业务线索</th>
-                <th>回复人员 / 方案内容</th>
-                <th style="width: 100px;">关联证据</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items.map(item => {
-                const subCls = item.question_subject_bucket === 'zhongji' ? 'tag-zhongji' : (item.question_subject_bucket === 'other' ? 'tag-other' : 'tag-unknown');
-                const subName = item.question_subject_bucket === 'zhongji' ? '中技' : (item.question_subject_bucket === 'other' ? '其他' : '未知');
-                
-                let clueBadges = '';
-                if (item.clues) {
-                  if (item.clues.waybill_no) clueBadges += `<span class="clue-badge">单号: ${esc(item.clues.waybill_no)}</span>`;
-                  if (item.clues.packages) clueBadges += `<span class="clue-badge">${esc(item.clues.packages)}</span>`;
-                  if (item.clues.weight) clueBadges += `<span class="clue-badge">${esc(item.clues.weight)}</span>`;
-                  if (item.clues.volume) clueBadges += `<span class="clue-badge">${esc(item.clues.volume)}</span>`;
-                }
+      wrap.innerHTML = '<div class="empty">正在加载数据...</div>';
 
-                return `
-                  <tr>
-                    <td>
-                      <strong>${esc(item.question_sender_name)}</strong><br>
-                      <span class="tag ${subCls}">${subName}${item.question_corp_name ? ' · ' + esc(item.question_corp_name) : ''}</span><br>
-                      <small>${esc(item.question_sent_at.slice(0, 16).replace('T', ' '))}</small>
-                    </td>
-                    <td>
-                      <b>${esc(item.category)}</b><br>
-                      <span class="${statusClass(item.issue_status)}">${statusLabel(item.issue_status)}</span>
-                    </td>
-                    <td>
-                      <div>${esc(item.question_raw_text)}</div>
-                      <div>${clueBadges}</div>
-                      <small style="color:#64748b;">群/会话: ${esc(item.conversation_name)}</small>
-                    </td>
-                    <td>
-                      ${item.responder_name ? `
-                        <strong>${esc(item.responder_name)}</strong> 
-                        <span class="tag ${item.responder_subject_bucket==='zhongji'?'tag-zhongji':'tag-other'}">${item.responder_subject_bucket==='zhongji'?'中技':'其他'}</span>
-                        <small>(${item.latency_seconds}秒后)</small><br>
-                        <div>${esc(item.responder_raw_text)}</div>
-                      ` : '<span class="status-unreplied">暂无回复</span>'}
-                    </td>
-                    <td>
-                      <small>
-                        依据: ${esc(item.association_basis || '无')}<br>
-                        引用: ${esc(item.source_reference || '')}
-                      </small>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        `;
-      } else {
-        wrap.innerHTML = '<div class="empty">暂无匹配的物流问题记录</div>';
+      try {
+        const subj = document.querySelector('#subjectSelect').value;
+        const cat = document.querySelector('#categorySelect').value;
+        const st = document.querySelector('#statusSelect').value;
+        const acc = document.querySelector('#accountInput').value.trim();
+
+        const params = new URLSearchParams();
+        if (subj) params.set('subject', subj);
+        if (cat) params.set('category', cat);
+        if (st) params.set('status', st);
+        if (acc) params.set('account_id', acc);
+
+        const [summaryRes, issuesRes] = await Promise.all([
+          fetch('/api/wecom/summary?' + params).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch('/api/wecom/issues?' + params).then(r => r.ok ? r.json() : {items:[]}).catch(() => ({items:[]}))
+        ]);
+
+        // Update counters
+        document.querySelector('#statTotal').textContent = summaryRes.issue_count || 0;
+        document.querySelector('#statSolved').textContent = summaryRes.solved_count || 0;
+        document.querySelector('#statAck').textContent = summaryRes.ack_only_count || 0;
+        document.querySelector('#statUnreplied').textContent = Math.max(0, (summaryRes.pending_count || 0) - (summaryRes.ack_only_count || 0));
+        document.querySelector('#statCatCount').textContent = summaryRes.category_count || 0;
+
+        // Update category list & dropdown
+        const catListEl = document.querySelector('#categoryList');
+        const cats = summaryRes.categories || [];
+        if (cats.length) {
+          catListEl.innerHTML = cats.map(c => `
+            <div class="cat-item ${cat === c.category ? 'active' : ''}" onclick="selectCategory('${esc(c.category)}')">
+              <span>${esc(c.category)}</span>
+              <b>${c.count}</b>
+            </div>
+          `).join('');
+        } else {
+          catListEl.innerHTML = '<div class="empty">暂无统计数据</div>';
+        }
+
+        const catSelect = document.querySelector('#categorySelect');
+        const curCat = catSelect.value;
+        catSelect.innerHTML = '<option value="">全部类别</option>' + cats.map(c => `
+          <option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>
+        `).join('');
+        if ([...catSelect.options].some(o => o.value === curCat)) catSelect.value = curCat;
+
+        // Render issues table
+        const items = issuesRes.items || [];
+        if (items.length) {
+          wrap.innerHTML = `
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 140px;">提出者 / 主体</th>
+                  <th style="width: 110px;">类别 / 状态</th>
+                  <th>提问内容与业务线索</th>
+                  <th>回复人员 / 方案内容</th>
+                  <th style="width: 100px;">关联证据</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(item => {
+                  const subCls = item.question_subject_bucket === 'zhongji' ? 'tag-zhongji' : (item.question_subject_bucket === 'other' ? 'tag-other' : 'tag-unknown');
+                  const subName = item.question_subject_bucket === 'zhongji' ? '中技' : (item.question_subject_bucket === 'other' ? '其他' : '未知');
+                  
+                  let clueBadges = '';
+                  if (item.clues) {
+                    if (item.clues.waybill_no) clueBadges += `<span class="clue-badge">单号: ${esc(item.clues.waybill_no)}</span>`;
+                    if (item.clues.packages) clueBadges += `<span class="clue-badge">${esc(item.clues.packages)}</span>`;
+                    if (item.clues.weight) clueBadges += `<span class="clue-badge">${esc(item.clues.weight)}</span>`;
+                    if (item.clues.volume) clueBadges += `<span class="clue-badge">${esc(item.clues.volume)}</span>`;
+                  }
+
+                  return `
+                    <tr>
+                      <td>
+                        <strong>${esc(item.question_sender_name || '未知')}</strong><br>
+                        <span class="tag ${subCls}">${subName}${item.question_corp_name ? ' · ' + esc(item.question_corp_name) : ''}</span><br>
+                        <small>${esc(formatTime(item.question_sent_at))}</small>
+                      </td>
+                      <td>
+                        <b>${esc(item.category || '其他')}</b><br>
+                        <span class="${statusClass(item.issue_status)}">${statusLabel(item.issue_status)}</span>
+                      </td>
+                      <td>
+                        <div>${esc(item.question_raw_text || '')}</div>
+                        <div>${clueBadges}</div>
+                        <small style="color:#64748b;">群/会话: ${esc(item.conversation_name || '')}</small>
+                      </td>
+                      <td>
+                        ${item.responder_name ? `
+                          <strong>${esc(item.responder_name)}</strong> 
+                          <span class="tag ${item.responder_subject_bucket==='zhongji'?'tag-zhongji':'tag-other'}">${item.responder_subject_bucket==='zhongji'?'中技':'其他'}</span>
+                          <small>(${item.latency_seconds ?? 0}秒后)</small><br>
+                          <div>${esc(item.responder_raw_text || '')}</div>
+                        ` : '<span class="status-unreplied">暂无回复</span>'}
+                      </td>
+                      <td>
+                        <small>
+                          依据: ${esc(item.association_basis || '无')}<br>
+                          引用: ${esc(item.source_reference || '')}
+                        </small>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        } else {
+          wrap.innerHTML = '<div class="empty">暂无匹配的物流问题记录</div>';
+        }
+      } catch (err) {
+        wrap.innerHTML = `<div class="empty" style="color: var(--danger)">数据加载异常: ${esc(err.message)}</div>`;
       }
     }
 
