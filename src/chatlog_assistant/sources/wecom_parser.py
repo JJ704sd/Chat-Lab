@@ -41,6 +41,7 @@ class WecomUnifiedRecord:
     root_message_id: str | None = None
     nesting_depth: int = 0
     provenance: dict[str, Any] = field(default_factory=dict)
+    company_status: str = "unknown"
 
     @property
     def id(self) -> str:
@@ -73,6 +74,7 @@ class WecomUnifiedRecord:
             "root_message_id": self.root_message_id,
             "nesting_depth": self.nesting_depth,
             "provenance": self.provenance,
+            "company_status": self.company_status,
         }
 
 
@@ -164,6 +166,8 @@ def records_from_message_tree(
                          "original_conversation_id": item.get("conversation_id"),
                          "original_sender_id_present": bool(item.get("sender_id")),
                          "identity_lookup_used": bool(known_identity)})
+            if identity.candidate_corp_names:
+                info["identity_candidates"] = list(identity.candidate_corp_names)
             if item.get("quoted_text"):
                 info["quoted_text"] = str(item["quoted_text"])
             record = WecomUnifiedRecord(
@@ -178,6 +182,7 @@ def records_from_message_tree(
                 parse_status=status, source_reference=reference,
                 parent_id=ancestor.id if ancestor else None, root_message_id=root_id,
                 nesting_depth=depth, provenance=info,
+                company_status=identity.company_status,
             )
             records.append(record)
         if children is not None:

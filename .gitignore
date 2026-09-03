@@ -27,6 +27,7 @@ secrets/
 appsettings.Local.json
 _tmp_wechat_extract/
 output/
+outputs/
 exports/
 *.log
 *.zip

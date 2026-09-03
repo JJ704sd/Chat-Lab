@@ -24,6 +24,7 @@ from .wecom_storage import WecomLocalStorage
 from .wecom_exporter import export_issues_to_csv, export_issues_to_json
 from .wecom_semantic import WecomSemanticAnalyzer
 from .wecom_web import serve_wecom
+from .wecom_pricing import PriceOperationError, build_price_workbook
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -114,6 +115,42 @@ def build_parser() -> argparse.ArgumentParser:
     srv.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8766)
+
+    price = sub.add_parser("prices", help="读取最新价格或待审核价格候选")
+    price.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    price.add_argument("--view", choices=["current", "pending", "all"], default="current")
+    price.add_argument("--account-id")
+    price.add_argument("--source-database")
+    price.add_argument("--conversation-id")
+    price.add_argument("--conversation-name")
+    price.add_argument("--company")
+    price.add_argument("--route")
+    price.add_argument("--keyword")
+    price.add_argument("--limit", type=int, default=500)
+
+    price_export = sub.add_parser("prices-export", help="导出当前筛选范围的全部价格到 .xlsx")
+    price_export.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    price_export.add_argument("--output", type=Path, required=True)
+    price_export.add_argument("--view", choices=["current", "pending", "all"], default="current")
+    price_export.add_argument("--account-id")
+    price_export.add_argument("--source-database")
+    price_export.add_argument("--conversation-id")
+    price_export.add_argument("--conversation-name")
+    price_export.add_argument("--company")
+    price_export.add_argument("--route")
+    price_export.add_argument("--keyword")
+
+    template = sub.add_parser("prices-template", help="下载价格维护 .xlsx 填写模板")
+    template.add_argument("--output", type=Path, required=True)
+
+    price_config = sub.add_parser("prices-config", help="配置价格责任人及独立价格审核模型开关")
+    price_config.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    price_config.add_argument("--reviewer-id", help="本地配置的价格审核负责人 ID")
+    price_config.add_argument("--reviewer-name", help="本地配置的价格审核负责人显示名")
+    price_config.add_argument("--role", help="责任岗位名称")
+    price_config.add_argument("--price-llm", choices=["on", "off"], help="显式开启或关闭价格审核 LLM；默认不变")
+    price_config.add_argument("--model", help="价格审核模型标识（仅配置，不自动外发）")
+    price_config.add_argument("--model-version", help="价格审核模型版本标识")
 
     return parser
 
@@ -242,6 +279,57 @@ def main(argv: list[str] | None = None) -> int:
     if args.subcommand == "serve":
         storage = WecomLocalStorage(args.analysis_db)
         serve_wecom(storage, host=args.host, port=args.port)
+        return 0
+
+    if args.subcommand in {"prices", "prices-export"}:
+        storage = WecomLocalStorage(args.analysis_db)
+        storage.initialize()
+        service = storage.price_maintenance()
+        kwargs = {
+            "account_id": args.account_id, "source_database": args.source_database,
+            "conversation_id": args.conversation_id, "conversation_name": args.conversation_name,
+            "company": args.company, "route": args.route, "keyword": args.keyword,
+            "view": args.view,
+        }
+        if args.subcommand == "prices":
+            result = service.list_prices(**kwargs, limit=args.limit)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        items = []
+        cursor = None
+        while True:
+            page = service.list_prices(**kwargs, cursor=cursor, limit=500)
+            items.extend(page["items"])
+            cursor = page.get("next_cursor")
+            if not cursor:
+                break
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_bytes(build_price_workbook(items, view=args.view, scope=kwargs))
+        print(json.dumps({"output": str(args.output), "view": args.view, "items": len(items)}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.subcommand == "prices-template":
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_bytes(build_price_workbook(template=True))
+        print(json.dumps({"output": str(args.output), "template_version": "1.0"}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.subcommand == "prices-config":
+        storage = WecomLocalStorage(args.analysis_db)
+        storage.initialize()
+        service = storage.price_maintenance()
+        current = service.get_settings()
+        if any(value is not None for value in (args.reviewer_id, args.reviewer_name, args.role)):
+            reviewer_id = args.reviewer_id if args.reviewer_id is not None else current.get("reviewer_id")
+            reviewer_name = args.reviewer_name if args.reviewer_name is not None else current.get("reviewer_name")
+            if not reviewer_id or not reviewer_name:
+                raise PriceOperationError("reviewer_required", "配置价格审核负责人必须同时提供 reviewer-id 和 reviewer-name")
+            service.configure_responsibility(reviewer_id, reviewer_name, role=args.role or current["responsibility_role"])
+        if args.price_llm is not None or args.model is not None or args.model_version is not None:
+            service.configure_llm(args.price_llm == "on" if args.price_llm is not None else current["price_review_llm_enabled"],
+                                  model=args.model if args.model is not None else current.get("model"),
+                                  model_version=args.model_version if args.model_version is not None else current.get("model_version"))
+        print(json.dumps(service.get_settings(), ensure_ascii=False, indent=2))
         return 0
 
     return 0

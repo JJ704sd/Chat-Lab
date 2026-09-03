@@ -10,6 +10,7 @@ from statistics import mean, median
 
 from .wecom_classifier import extract_business_clues
 from .wecom_analysis import split_quoted_reply, message_order_key
+from .wecom_subject import sender_label
 
 
 def display_safe_text(text):
@@ -68,6 +69,11 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
     for row in messages:
         row["provenance"] = json.loads(row.pop("provenance_json", "{}"))
         row["sent_at"] = row["sent_at"] or None
+        row["company_status"] = row.get("company_status") or ("known" if row.get("sender_corp_name") else "unknown")
+        row["sender_label"] = sender_label(
+            row.get("sender_name"), row.get("sender_corp_name"),
+            company_status=row["company_status"],
+        )
         safe = display_safe_text(row['text'])
         row['display_redacted'] = safe != row['text']
         row['text'] = safe
@@ -109,6 +115,10 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
             clues = extract_business_clues(split_quoted_reply(message["text"])[1]).as_dict()
             evidence.append({"message_id": key, "source_message_id": message["message_id"],
                              "sent_at": message["sent_at"], "sender_name": message["sender_name"],
+                             "sender_label": message["sender_label"],
+                             "sender_corp_id": message.get("sender_corp_id"),
+                             "sender_corp_name": message.get("sender_corp_name"),
+                             "company_status": message.get("company_status", "unknown"),
                              "subject_bucket": message["subject_bucket"], "text": message["text"],
                              "source_reference": message["source_reference"],
                              "kind": response["response_kind"], "is_solution": bool(response["is_solution"]),
@@ -127,7 +137,11 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
                 response["clues"] = saved[response["message_id"]]
         events.append({"round": len(events) + 1, "message_id": question["id"],
                        "source_message_id": question["message_id"], "sent_at": question["sent_at"],
-                       "sender_name": question["sender_name"], "subject_bucket": question["subject_bucket"],
+                       "sender_name": question["sender_name"], "sender_label": question["sender_label"],
+                       "sender_corp_id": question.get("sender_corp_id"),
+                       "sender_corp_name": question.get("sender_corp_name"),
+                       "company_status": question.get("company_status", "unknown"),
+                       "subject_bucket": question["subject_bucket"],
                        "subject_basis": question["subject_basis"], "text": question["text"],
                        "source_reference": question["source_reference"], "parent_id": question["parent_id"],
                        "nesting_depth": question["nesting_depth"], "provenance": question["provenance"],
@@ -280,7 +294,7 @@ def write_report(report, output_dir):
     for row in flat:
         route_items = json.loads(row['route_items']) or [{'origin':row['origin'],'destination':row['destination']}]
         specs = [item for key in ('package_items','weight_items','volume_items','dimension_items') for item in (json.loads(row[key]) or [])]
-        lines.append("|" + "|".join(cell(v) for v in [row["round"], row["sent_at"], f"{row['sender_name']}／{row['subject_bucket']}",
+        lines.append("|" + "|".join(cell(v) for v in [row["round"], row["sent_at"], report["events"][int(row["round"]) - 1].get("sender_label") or f"{row['sender_name']}／{row['subject_bucket']}",
                       '；'.join(f"{item['origin'] or '未知'} → {item['destination'] or '未知'}" for item in route_items),
                       " / ".join(specs),
                       row["ack_seconds"], row["final_solution_seconds"], row["solution_text"], row["status"]]) + "|")

@@ -3,660 +3,584 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>本地企业微信物流聊天记录分析</title>
+  <title>企微信息分析助手 · 揽收车队群聊分析</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4f6f9;
-      --card-bg: #ffffff;
-      --ink: #1e293b;
+      --bg: #f4f7fb;
+      --card: #fff;
+      --ink: #172033;
       --muted: #64748b;
-      --line: #e2e8f0;
+      --line: #dbe3ee;
       --brand: #2563eb;
       --brand-soft: #eff6ff;
-      --zhongji: #ea580c;
-      --zhongji-soft: #fff7ed;
-      --other: #475569;
-      --other-soft: #f1f5f9;
-      --unknown: #94a3b8;
-      --unknown-soft: #f8fafc;
-      --ok: #16a34a;
-      --warn: #d97706;
-      --danger: #dc2626;
+      --ok: #15803d;
+      --ok-soft: #f0fdf4;
+      --warn: #b45309;
+      --warn-soft: #fffbeb;
+      --danger: #b91c1c;
+      --danger-soft: #fef2f2;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      line-height: 1.5;
-    }
-    header {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      color: white;
-      padding: 24px 32px;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    header .badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: #3b82f6;
-      color: white;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-    header h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; }
-    header p { margin: 0; color: #94a3b8; font-size: 13px; }
-    main { max-width: 1440px; margin: 0 auto; padding: 24px; }
-    
-    .toolbar {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-      background: var(--card-bg);
-      padding: 16px;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      margin-bottom: 20px;
-      align-items: end;
-    }
-    .field { display: flex; flex-direction: column; gap: 6px; }
-    label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
-    select, input, button {
-      height: 38px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: white;
-      padding: 0 12px;
-      color: var(--ink);
-      font-size: 13px;
-    }
-    select:focus, input:focus, button:focus { outline: 3px solid rgba(37,99,235,0.25); outline-offset: 1px; border-color: var(--brand); }
-    .btn-group { display: flex; gap: 8px; grid-column: 1 / -1; }
-    button.btn-primary {
-      cursor: pointer;
-      background: var(--brand);
-      color: white;
-      border: none;
-      font-weight: 600;
-      padding: 0 16px;
-    }
-    button.btn-secondary {
-      cursor: pointer;
-      background: #f8fafc;
-      color: var(--ink);
-      border: 1px solid var(--line);
-      font-weight: 500;
-      padding: 0 14px;
-    }
-    button:hover { opacity: 0.92; }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      gap: 14px;
-      margin-bottom: 20px;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 16px 18px;
-    }
-    .card span { display: block; color: var(--muted); font-size: 12px; font-weight: 600; }
-    .card strong { display: block; margin-top: 6px; font-size: 26px; font-weight: 700; color: var(--ink); }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 18px;
-      align-items: start;
-    }
-    .panel {
-      background: var(--card-bg);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 18px;
-      min-width: 0;
-    }
-    .panel h2 {
-      margin: 0 0 14px;
-      font-size: 15px;
-      font-weight: 600;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .cat-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
-      padding: 9px 6px;
-      height: auto;
-      border-bottom: 1px solid #f1f5f9;
-      border-top: 0;
-      border-left: 0;
-      border-right: 0;
-      font-size: 13px;
-      cursor: pointer;
-      text-align: left;
-    }
-    .cat-item:hover { background: #f8fafc; }
-    .cat-item.active, .cat-item[aria-pressed="true"] { font-weight: 700; color: var(--brand); background: var(--brand-soft); }
-    .cat-item:focus-visible { outline: 3px solid rgba(37,99,235,0.3); outline-offset: -2px; }
-
-    .table-wrap { overflow-x: auto; max-height: 650px; }
-    table { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 13px; }
-    th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th {
-      color: var(--muted);
-      font-weight: 600;
-      background: #f8fafc;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    
-    .tag {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .tag-zhongji { background: var(--zhongji-soft); color: var(--zhongji); border: 1px solid #fed7aa; }
-    .tag-other { background: var(--other-soft); color: var(--other); border: 1px solid #cbd5e1; }
-    .tag-unknown { background: var(--unknown-soft); color: var(--unknown); border: 1px solid #e2e8f0; }
-    
-    .status-solved { color: var(--ok); font-weight: 600; }
-    .status-ack { color: var(--warn); font-weight: 600; }
-    .status-unreplied { color: var(--danger); font-weight: 600; }
-    .status-progress { color: var(--brand); font-weight: 600; }
-    
-    .clue-badge {
-      display: inline-block;
-      background: #f1f5f9;
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-size: 11px;
-      color: #334155;
-      margin-top: 4px;
-      margin-right: 4px;
-    }
-
-    .empty { padding: 48px; text-align: center; color: var(--muted); }
-    small { color: var(--muted); font-size: 11px; }
-    #coverage { padding: 12px 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; }
-    #loadState { min-height: 24px; margin: 8px 0 12px; color: var(--muted); }
-    #loadState.error { color: var(--danger); }
-    #loadState.success { color: var(--ok); }
-    .category-meta, .evidence-note { color: var(--muted); font-size: 12px; margin: -6px 0 12px; }
-    .clear-category { height: 30px; padding: 0 9px; font-size: 12px; }
-    .event-detail { margin-top: 10px; }
-    .report-panel { margin-bottom: 18px; }
-    .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-    details { margin: 8px 0; }
-    summary { cursor: pointer; }
-    .latency-bar { display: inline-block; min-width: 2px; height: 9px; background: #2563eb; border-radius: 2px; }
-    .latency-ack { background: #f59e0b; }
-
-    @media (max-width: 1024px) {
-      .cards { grid-template-columns: repeat(2, 1fr); }
-      .grid-2 { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 620px) {
-      header { padding: 20px 18px; }
-      main { padding: 14px; }
-      .cards { grid-template-columns: 1fr; }
-      .btn-group { flex-wrap: wrap; }
-      .btn-group button { flex: 1 1 180px; }
-    }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    body.drawer-open { overflow: hidden; }
+    header { padding: 24px clamp(18px, 4vw, 56px); color: #fff; background: linear-gradient(120deg, #1e293b, #0f172a 68%, #1d4ed8); }
+    header .eyebrow { display: inline-flex; gap: 7px; align-items: center; padding: 3px 9px; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; color: #bfdbfe; font-size: 11px; letter-spacing: .04em; }
+    header h1 { margin: 10px 0 3px; font-size: clamp(22px, 3vw, 30px); font-weight: 700; }
+    header .subtitle { margin: 0 0 4px; color: #dbeafe; font-size: 15px; font-weight: 700; }
+    header p { margin: 0; color: #cbd5e1; }
+    main { max-width: 1520px; margin: 0 auto; padding: 22px clamp(14px, 3vw, 40px) 80px; }
+    .toolbar, .panel, .card { border: 1px solid var(--line); border-radius: 12px; background: var(--card); box-shadow: 0 2px 8px rgba(15, 23, 42, .035); }
+    .toolbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; align-items: end; padding: 15px; margin-bottom: 16px; }
+    .toolbar.compact { padding: 12px 15px; }
+    .field { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+    label, .label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    input, select, button, textarea { min-height: 38px; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; color: var(--ink); background: #fff; font: inherit; }
+    textarea { min-height: 74px; resize: vertical; }
+    input:focus, select:focus, button:focus, textarea:focus, summary:focus { outline: 3px solid rgba(37, 99, 235, .2); outline-offset: 1px; border-color: var(--brand); }
+    button { cursor: pointer; font-weight: 650; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    .btn-primary { border-color: var(--brand); color: #fff; background: var(--brand); }
+    .btn-secondary { background: #f8fafc; }
+    .btn-danger { border-color: #fecaca; color: var(--danger); background: var(--danger-soft); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .actions.wide { grid-column: 1 / -1; }
+    .notice { margin: 10px 0 16px; padding: 11px 14px; border: 1px solid #bfdbfe; border-radius: 9px; color: #1e3a8a; background: var(--brand-soft); }
+    .notice.warn { border-color: #fcd34d; color: #92400e; background: var(--warn-soft); }
+    .notice.error { border-color: #fecaca; color: var(--danger); background: var(--danger-soft); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin: 0 0 16px; }
+    .card { padding: 14px 16px; }
+    .card span { display: block; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .card strong { display: block; margin-top: 4px; font-size: 25px; }
+    .layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+    .layout > aside { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+    .layout > aside .panel { margin-bottom: 0; }
+    .panel { min-width: 0; margin-bottom: 16px; padding: 17px; }
+    .panel h2 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin: 0 0 10px; font-size: 16px; }
+    .panel h3 { margin: 14px 0 8px; font-size: 14px; }
+    .subtle, .meta { color: var(--muted); font-size: 12px; }
+    .meta { margin: 0 0 10px; }
+    .table-wrap { max-width: 100%; overflow: auto; }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; z-index: 1; color: var(--muted); background: #f8fafc; font-size: 12px; font-weight: 750; }
+    td { overflow-wrap: anywhere; }
+    .table-tight th, .table-tight td { padding: 8px 7px; }
+    .status { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-weight: 700; }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .status.ok { color: var(--ok); }
+    .status.wait { color: var(--warn); }
+    .status.bad { color: var(--danger); }
+    .status.info { color: var(--brand); }
+    .status.neutral { color: var(--muted); }
+    .tag { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: #475569; background: #f8fafc; font-size: 11px; }
+    .tag.company { color: #1d4ed8; border-color: #bfdbfe; background: var(--brand-soft); }
+    .tag.pending { color: var(--warn); border-color: #fcd34d; background: var(--warn-soft); }
+    .tag.conflict { color: var(--danger); border-color: #fecaca; background: var(--danger-soft); }
+    .empty { padding: 28px 10px; color: var(--muted); text-align: center; }
+    .round-list { display: grid; gap: 9px; }
+    .round { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+    .round:hover { border-color: #93c5fd; background: #fafdff; }
+    .round-number { color: var(--brand); font-weight: 800; }
+    .round-title { margin: 0 0 3px; font-weight: 750; }
+    .round-summary { color: #475569; overflow-wrap: anywhere; }
+    .round-meta { color: var(--muted); font-size: 12px; }
+    .message-row { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    .message-row.target { border-left: 3px solid var(--brand); background: var(--brand-soft); }
+    .message-row.highlight { animation: flash 1.6s ease-out; }
+    @keyframes flash { 0%, 35% { background: #fef3c7; } 100% { background: transparent; } }
+    .message-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .message-author { font-weight: 750; overflow-wrap: anywhere; }
+    .message-preview { margin-top: 2px; color: #334155; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .message-type { color: var(--muted); font-size: 11px; }
+    .date-separator { display: flex; align-items: center; gap: 10px; margin: 14px 0 5px; color: var(--muted); font-size: 12px; font-weight: 750; }
+    .date-separator::before, .date-separator::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+    .pagination { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-top: 11px; }
+    details { border: 1px solid var(--line); border-radius: 8px; }
+    details + details { margin-top: 8px; }
+    summary { cursor: pointer; padding: 9px 11px; font-weight: 650; }
+    .details-body { padding: 0 11px 12px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .divider { height: 1px; margin: 14px 0; background: var(--line); }
+    .preview-box { margin-top: 10px; padding: 10px; border: 1px dashed #93c5fd; border-radius: 8px; background: #f8fbff; }
+    dialog { width: min(620px, calc(100vw - 26px)); border: 0; border-radius: 12px; padding: 0; color: var(--ink); box-shadow: 0 24px 80px rgba(15, 23, 42, .3); }
+    dialog::backdrop { background: rgba(15, 23, 42, .4); }
+    .dialog-body { padding: 19px; }
+    .dialog-body h2 { margin: 0 0 14px; font-size: 17px; }
+    #evidenceDrawer { position: fixed; inset: 0 0 0 auto; z-index: 20; display: flex; width: min(700px, 100vw); flex-direction: column; border-left: 1px solid var(--line); background: #f8fafc; box-shadow: -14px 0 45px rgba(15, 23, 42, .18); }
+    #evidenceDrawer[hidden] { display: none; }
+    #evidenceDrawer.expanded { width: min(1000px, 100vw); }
+    .drawer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); background: #fff; }
+    .drawer-head h2 { margin: 0; font-size: 16px; }
+    .drawer-body { min-height: 0; flex: 1; overflow: auto; padding: 12px 16px 38px; }
+    .path { margin: 0 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .chat-block { margin: 0 0 17px; }
+    .chat-block h3 { margin: 0 0 6px; font-size: 13px; color: #475569; }
+    .bubble { width: min(78%, 620px); margin: 9px 0; padding: 10px 13px; border: 1px solid #e2e8f0; border-radius: 13px; background: #fff; box-shadow: 0 2px 5px rgba(15,23,42,.04); }
+    .bubble.role-zhongji { margin-left: auto; border-color: #b7e4c7; background: #dcf8df; }
+    .bubble.role-supplier { margin-right: auto; border-color: #e2e8f0; background: #fff; }
+    .bubble.role-unknown { margin-right: auto; border-color: #cbd5e1; background: #f1f5f9; }
+    .bubble.target { border-color: #2563eb; box-shadow: 0 0 0 3px #bfdbfe; }
+    .bubble-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; }
+    .bubble-author { color: var(--ink); font-weight: 800; }
+    .bubble-role { display: inline-flex; margin-left: 6px; padding: 1px 6px; border-radius: 999px; color: #475569; background: rgba(255,255,255,.72); font-size: 11px; font-weight: 700; }
+    .bubble-text { margin-top: 7px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    blockquote { margin: 8px 0 0; padding: 7px 10px; border-left: 3px solid #cbd5e1; border-radius: 4px; color: #64748b; background: #f8fafc; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .forward-card { margin-top: 8px; padding: 9px 10px; border: 1px solid #c4b5fd; border-radius: 9px; color: #5b21b6; background: #faf5ff; }
+    .price-table { width: 100%; min-width: 0; table-layout: auto; }
+    .price-table th { color: #1e3a8a; background: #eff6ff; }
+    .price-table td { border-right: 1px solid #eef2f7; }
+    .price-main-value { font-weight: 750; }
+    .price-missing { color: var(--warn); font-weight: 700; }
+    .price-detail { max-width: 560px; }
+    .role-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+    .price-table th:nth-child(1), .price-table td:nth-child(1) { min-width: 105px; white-space: nowrap; }
+    .price-table th:nth-child(2), .price-table td:nth-child(2) { min-width: 105px; white-space: nowrap; }
+    .price-table th:nth-child(3), .price-table td:nth-child(3), .price-table th:nth-child(4), .price-table td:nth-child(4), .price-table th:nth-child(5), .price-table td:nth-child(5), .price-table th:nth-child(6), .price-table td:nth-child(6) { white-space: nowrap; }
+    .price-table th:nth-child(7), .price-table td:nth-child(7) { min-width: 145px; white-space: nowrap; }
+    .price-table th:nth-child(8), .price-table td:nth-child(8) { min-width: 125px; white-space: nowrap; }
+    .price-table th:nth-child(10), .price-table td:nth-child(10) { min-width: 220px; }
+    .price-table td:nth-child(10) .actions { max-width: 260px; }
+    .price-table td:nth-child(9) { min-width: 82px; white-space: nowrap; }
+    .price-table td:nth-child(10) button { min-height: 30px; padding: 5px 7px; font-size: 12px; }
+    .drawer-gap { padding: 9px 10px; border: 1px solid #fcd34d; border-radius: 7px; color: #92400e; background: var(--warn-soft); }
+    body.drawer-open::after { content: ""; position: fixed; inset: 0; z-index: 19; background: rgba(15, 23, 42, .18); pointer-events: none; }
+    @media (max-width: 1040px) { .layout { grid-template-columns: 1fr; } #evidenceDrawer { width: min(760px, 100vw); } }
+    @media (max-width: 620px) { main { padding: 13px 10px 60px; } .round { grid-template-columns: 1fr; gap: 5px; } .message-row { grid-template-columns: 1fr; gap: 3px; } .panel { padding: 13px; } .drawer-body { padding-left: 10px; padding-right: 10px; } }
   </style>
 </head>
 <body>
   <header>
-    <div class="badge">Local Offline & Live Assistant</div>
-    <h1>企业微信物流聊天记录分析助手</h1>
-    <p>按群提取物流信息 · 引用与上下文关联 · 首次响应和方案耗时 · 风险证据</p>
+    <div class="eyebrow">本地企微 · 证据优先 · CM-1</div>
+    <h1>企微信息分析助手</h1>
+    <p class="subtitle">揽收车队群聊分析</p>
+    <p>围绕揽收车队群聊捕获路线报价、服务时效与可核验聊天证据；空运信息分析后续实现。</p>
   </header>
-  <main>
-    <section class="toolbar">
-      <div class="field">
-        <label for="conversationInput">群名称（模糊匹配 / 可下拉选择）</label>
-        <input id="conversationInput" list="convDatalist" value="中技AI cosplay" placeholder="留空查看全部群聊">
-        <datalist id="convDatalist"></datalist>
-      </div>
-      <div class="field">
-        <label for="conversationIdInput">会话 ID</label>
-        <input id="conversationIdInput" placeholder="同名群可用 ID 区分">
-      </div>
-      <div class="field">
-        <label for="subjectSelect">发送者主体</label>
-        <select id="subjectSelect">
-          <option value="">全部主体</option>
-          <option value="zhongji">中技 (zhongji)</option>
-          <option value="other">其他企业 (other)</option>
-          <option value="unknown">待确认 (unknown)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="categorySelect">物流问题类别</label>
-        <select id="categorySelect">
-          <option value="">全部类别</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="statusSelect">解决状态</label>
-        <select id="statusSelect">
-          <option value="">全部状态</option>
-          <option value="unreplied">未回复 (unreplied)</option>
-          <option value="acknowledged">仅确认收到 (acknowledged)</option>
-          <option value="solved">已有方案 (solved)</option>
-          <option value="in_progress">处理中 (in_progress)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="accountInput">账号 ID</label>
-        <input type="text" id="accountInput" placeholder="可选过滤账号">
-      </div>
-      <div class="btn-group">
-        <button class="btn-primary" id="btnRefresh">刷新结果</button>
-        <button class="btn-secondary" id="btnExportCsv">导出业务轮次 CSV</button>
-        <button class="btn-secondary" id="btnExportJson">导出完整证据 JSON</button>
-      </div>
+
+  <main id="app">
+    <section class="toolbar" aria-label="业务范围筛选">
+      <div class="field"><label for="accountInput">账号 ID</label><input id="accountInput" placeholder="明确账号范围"></div>
+      <div class="field"><label for="sourceDatabaseInput">来源库</label><input id="sourceDatabaseInput" placeholder="例如 fixture"></div>
+      <div class="field"><label for="conversationInput">会话名称</label><input id="conversationInput" list="convDatalist" placeholder="可模糊匹配群名"><datalist id="convDatalist"></datalist></div>
+      <div class="field"><label for="conversationIdInput">会话 ID</label><input id="conversationIdInput" placeholder="同名群用 ID 区分"></div>
+      <div class="field"><label for="subjectSelect">企业分类（旧统计维度）</label><select id="subjectSelect"><option value="">全部</option><option value="zhongji">中技方</option><option value="other">其他企业</option><option value="unknown">未知／待确认</option></select></div>
+      <div class="field"><label for="categorySelect">业务类别</label><select id="categorySelect"><option value="">全部</option></select></div>
+      <div class="field"><label for="statusSelect">业务状态</label><select id="statusSelect"><option value="">全部</option><option value="unreplied">未回复</option><option value="acknowledged">仅确认收到</option><option value="solved">已有相关方案</option><option value="in_progress">跟进中</option></select></div>
+      <div class="actions wide"><button id="btnRefresh" class="btn-primary">刷新当前范围</button><button id="btnExportCsv" class="btn-secondary">导出旧版业务 CSV</button><button id="btnExportJson" class="btn-secondary">导出完整证据 JSON</button><span id="loadState" class="meta" role="status" aria-live="polite"></span></div>
     </section>
 
-    <div class="toolbar"><div class="field"><label for="scopeSelect">记录范围</label><select id="scopeSelect"><option value="">主群及全部转发</option></select></div><div class="field"><label for="evidenceSearch">证据内检索（时间、人员、正文）</label><input id="evidenceSearch" placeholder="例如 21:01:23、氢氧化钾、通州"></div></div>
-    <p id="coverage" role="status"></p>
-    <p id="loadState" role="status" aria-live="polite"></p>
-    <section class="cards">
-      <article class="card">
-        <span>当前业务轮次（按消息去重）</span>
-        <strong id="statTotal">0</strong>
-      </article>
-      <article class="card">
-        <span>已给出具体方案</span>
-        <strong id="statSolved" style="color: var(--ok)">0</strong>
-      </article>
-      <article class="card">
-        <span>仅确认收到 (未解决)</span>
-        <strong id="statAck" style="color: var(--warn)">0</strong>
-      </article>
-      <article class="card">
-        <span>未回复问题</span>
-        <strong id="statUnreplied" style="color: var(--danger)">0</strong>
-      </article>
-      <article class="card">
-        <span>当前筛选相关消息数</span>
-        <strong id="statFilteredMessages">0</strong>
-      </article>
-      <article class="card">
-        <span>当前会话全量消息数</span>
-        <strong id="statCatCount">0</strong>
-      </article>
-      <article class="card"><span>跟进中（待补充或确认）</span><strong id="statProgress">0</strong></article>
+    <div id="coverage" class="notice" role="status"></div>
+    <section class="cards" aria-label="当前范围统计">
+      <article class="card"><span>业务轮次</span><strong id="statTotal">0</strong></article>
+      <article class="card"><span>已有相关方案</span><strong id="statSolved">0</strong></article>
+      <article class="card"><span>仅确认收到</span><strong id="statAck">0</strong></article>
+      <article class="card"><span>未回复</span><strong id="statUnreplied">0</strong></article>
+      <article class="card"><span>跟进中</span><strong id="statProgress">0</strong></article>
+      <article class="card"><span>已导入消息（当前范围）</span><strong id="statMessageCount">0</strong></article>
+      <article class="card"><span>待审核价格候选</span><strong id="statPendingPrices">0</strong></article>
     </section>
 
-    <section class="panel report-panel">
-      <h2>响应与方案时延（秒）</h2>
-      <p id="latencySummary"></p>
-      <details><summary>展开每轮时延图表</summary><div id="latencyChart" style="max-height:460px;overflow:auto"></div></details>
-      <p id="specialGoodsSummary"></p>
-    </section>
-    <section class="panel report-panel">
-      <h2>路线报价与时效</h2>
-      <div class="table-wrap" id="routesWrap" style="max-height:460px;overflow:auto"></div>
-    </section>
-    <section class="panel report-panel">
-      <h2>业务轮次与按需加载的完整回复证据（时间升序）</h2>
-      <p><small>已有方案表示获得报价或处置结论，不代表运输完成。追问独立计数；缺失字段保持未知。展开轮次后加载正文、回复和父级证据。</small></p>
-      <div id="eventsWrap"></div>
-    </section>
-    <section class="panel report-panel">
-      <h2>已加载消息与父子证据链</h2>
-      <p id="messagesState" class="evidence-note">页面按轮次按需读取相关证据；“导出完整证据 JSON”仍返回当前筛选范围的全量消息。</p>
-      <div id="messagesWrap"></div>
-    </section>
+    <div class="layout">
+      <div>
+        <section class="panel" id="pricePanel">
+          <h2><span>路线报价与时效 · 最新价格维护</span><span id="reviewerSummary" class="tag">责任岗位读取中…</span></h2>
+          <p class="meta">默认价格明细合并展示当前有效价格与待补充／待审核候选；同一报价方案只显示一行，候选通过校验和审核后才会成为有效价格。</p>
+          <div class="toolbar compact">
+            <div class="field"><label for="priceView">价格视图</label><select id="priceView"><option value="details" selected>价格明细</option><option value="current">最新价格</option><option value="incomplete">待完善</option><option value="pending">待审核</option><option value="all">全部现行状态</option></select></div>
+            <div class="field"><label for="priceCompany">报价公司</label><input id="priceCompany" placeholder="公司名称或 ID"></div>
+            <div class="field"><label for="priceRoute">路线</label><input id="priceRoute" placeholder="起点或终点"></div>
+            <div class="field"><label for="priceKeyword">价格关键词</label><input id="priceKeyword" placeholder="条件、来源或时效"></div>
+            <div class="actions"><button id="btnPriceRefresh" class="btn-secondary">查询价格</button><button id="btnPriceExport" class="btn-secondary">导出当前筛选全部 .xlsx</button><button id="btnPriceTemplate" class="btn-secondary">下载填写模板</button></div>
+          </div>
+          <div id="priceNotice" class="notice" hidden></div>
+          <div class="table-wrap" id="pricesWrap"></div>
+          <div class="pagination"><span id="pricePageState" class="meta"></span><button id="btnPriceMore" class="btn-secondary" hidden>加载更多</button></div>
+          <div class="divider"></div>
+          <details>
+            <summary>人工提交价格候选（保存后仍需显式审核）</summary>
+            <div class="details-body">
+              <p class="meta">网页内容被记录为人工来源，不会因为请求体中的状态、审核人或“自动通过”文字而直接生效。报价时间必须由人工明确填写。</p>
+              <form id="manualPriceForm" class="form-grid">
+                <div class="field"><label for="manualOrigin">起点</label><input id="manualOrigin" required></div>
+                <div class="field"><label for="manualDestination">终点</label><input id="manualDestination" required></div>
+                <div class="field"><label for="manualWeight">重量（含单位）</label><input id="manualWeight" placeholder="1000kg" required></div>
+                <div class="field"><label for="manualVolume">体积（含单位）</label><input id="manualVolume" placeholder="1cbm" required></div>
+                <div class="field"><label for="manualPackages">包装数量</label><input id="manualPackages" placeholder="1" required></div>
+                <div class="field"><label for="manualPackageType">包装类型</label><input id="manualPackageType" placeholder="箱／托" required></div>
+                <div class="field"><label for="manualServiceTime">服务时效</label><input id="manualServiceTime" placeholder="隔日达" required></div>
+                <div class="field"><label for="manualPrice">价格</label><input id="manualPrice" required></div>
+                <div class="field"><label for="manualCompany">报价公司</label><input id="manualCompany" required></div>
+                <div class="field"><label for="manualCurrency">币种</label><input id="manualCurrency" placeholder="CNY／USD，未知请勿猜"></div>
+                <div class="field"><label for="manualMethod">计价方式／单位</label><input id="manualMethod" placeholder="总价／每公斤"></div>
+                <div class="field"><label for="manualQuoteTime">报价业务时间（含时区）</label><input id="manualQuoteTime" type="datetime-local" required></div>
+                <div class="field"><label for="manualSourceMessage">来源消息 ID（可选）</label><input id="manualSourceMessage"></div>
+                <div class="actions wide"><button class="btn-primary" type="submit">保存人工候选</button><span id="manualPriceState" class="meta"></span></div>
+              </form>
+            </div>
+          </details>
+          <details>
+            <summary>Excel 预览与回传</summary>
+            <div class="details-body">
+              <p class="meta">仅接受真实 .xlsx；先预览、逐行检查并明确勾选有效行，再进入统一候选流程。系统列中的审核人和状态不具有权限。</p>
+              <div class="actions"><input id="priceFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><button id="btnPreviewImport" class="btn-secondary">预览导入</button><button id="btnConfirmImport" class="btn-primary" disabled>确认所选有效行</button></div>
+              <div id="importPreview" class="preview-box" hidden></div>
+            </div>
+          </details>
+        </section>
 
-    <section class="grid-2">
-      <aside class="panel">
-        <h2><span id="categoryTitle">类别分布（当前筛选范围；一轮可包含多个类别）</span><button id="clearCategory" class="btn-secondary clear-category" type="button">清除类别</button></h2>
-        <p id="categoryMeta" class="category-meta">统计口径：多标签，共现类别会重复计入。</p>
-        <div id="categoryList"></div>
+        <section class="panel" id="roundsPanel">
+          <h2><span>业务轮次与回复证据（时间升序）</span><span class="tag">点击查看统一证据抽屉</span></h2>
+          <p class="meta">摘要显示时间、提问人 @公司、路线、货物摘要、中文业务状态、回复数和待复核提示；完整正文和父级按需读取。</p>
+          <div id="eventsWrap" class="round-list"></div>
+        </section>
+
+        <section class="panel" id="allMessagesPanel">
+          <h2><span>全量已导入消息</span><span class="tag">独立检索，不依赖打开轮次</span></h2>
+          <p id="messageScopeNote" class="meta">“全量”仅指当前账号／会话中已导入的本地消息，不代表云端完整历史。首屏不传全量正文。</p>
+          <div class="toolbar compact">
+            <div class="field"><label for="messageKeyword">正文／作者／消息 ID</label><input id="messageKeyword" placeholder="服务端检索"></div>
+            <div class="field"><label for="messageCompany">作者公司</label><input id="messageCompany" placeholder="公司名或状态"></div>
+            <div class="field"><label for="messageType">消息类型</label><input id="messageType" placeholder="例如 文本／合并转发记录"></div>
+            <div class="actions"><button id="btnMessageSearch" class="btn-secondary">检索消息</button><button id="btnMessageMore" class="btn-secondary" hidden>加载下一页</button></div>
+          </div>
+          <div id="messageCounts" class="meta"></div>
+          <div id="messagesWrap"></div>
+        </section>
+      </div>
+
+      <aside>
+        <section class="panel" id="companiesPanel">
+          <h2><span>公司信息与解析状态</span><span class="tag">原始身份只读</span></h2>
+          <p class="meta">公司名称与中技方／其他企业分类分开；冲突显示公司待确认。纠正只作用于明确选定的消息／发送者范围。</p>
+          <div class="table-wrap" id="companiesWrap"></div>
+          <details>
+            <summary>预览／提交公司纠正或简称映射</summary>
+            <div class="details-body">
+              <form id="companyCorrectionForm" class="form-grid">
+                <div class="field full"><label for="correctionMessageIds">消息 ID（逗号分隔，至少一种范围）</label><input id="correctionMessageIds" placeholder="填写需要纠正身份的消息范围"></div>
+                <div class="field full"><label for="correctionSenderIds">发送者 ID（逗号分隔）</label><input id="correctionSenderIds"></div>
+                <div class="field"><label for="correctionCompanyId">规范公司 ID</label><input id="correctionCompanyId" required></div>
+                <div class="field"><label for="correctionCompanyName">规范公司名称</label><input id="correctionCompanyName" required></div>
+                <div class="field"><label for="correctionAlias">确认简称映射（可选）</label><input id="correctionAlias" placeholder="例如 甲司"></div>
+                <div class="field"><label for="correctionRole">业务身份（仅可信公司确认）</label><select id="correctionRole"><option value="">不指定</option><option value="supplier">确认供应商</option><option value="unknown">身份待确认（中性）</option></select></div>
+                <div class="field full"><label for="correctionBasis">依据／理由</label><textarea id="correctionBasis" required></textarea></div>
+                <div class="actions wide"><button type="button" id="btnCorrectionPreview" class="btn-secondary">预览受影响记录</button><button type="button" id="btnCorrectionSubmit" class="btn-primary" disabled>确认提交纠正</button></div>
+              </form>
+              <div id="correctionPreview" class="preview-box" hidden></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel">
+          <h2>旧报告统计与证据质量</h2>
+          <div id="latencySummary" class="meta"></div>
+          <div id="specialGoodsSummary" class="meta"></div>
+          <div id="categoryList"></div>
+        </section>
+
+        <section class="panel">
+          <h2>路线分析辅助摘要</h2>
+          <p class="meta">此处保留轮次级路线统计；逐笔报价与维护状态请以左侧价格明细为准。</p>
+          <div class="table-wrap" id="routesWrap"></div>
+        </section>
       </aside>
-      <article class="panel">
-        <h2>业务状态索引（与上方指标同一口径）</h2>
-        <div class="table-wrap" id="issuesWrap"></div>
-      </article>
-    </section>
+    </div>
   </main>
 
+  <dialog id="priceDetailDialog" aria-labelledby="priceDetailTitle">
+    <div class="dialog-body">
+      <h2 id="priceDetailTitle">报价明细 · 揽收车队群聊分析</h2>
+      <div id="priceDetailBody"><p class="empty">选择报价后读取明细。</p></div>
+      <div class="actions"><button type="button" id="btnPriceDetailClose" class="btn-secondary">关闭</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="reviewDialog" aria-labelledby="reviewTitle">
+    <div class="dialog-body">
+      <h2 id="reviewTitle">审核价格候选</h2>
+      <p id="reviewCandidateSummary" class="meta"></p>
+      <form id="reviewForm" class="form-grid">
+        <div class="field"><label for="reviewAction">审核动作</label><select id="reviewAction"><option value="approve">通过并尝试生效</option><option value="correct_and_approve">修改后通过</option><option value="reject">驳回</option></select></div>
+        <div class="field"><label for="reviewOrigin">起点</label><input id="reviewOrigin"></div>
+        <div class="field"><label for="reviewDestination">终点</label><input id="reviewDestination"></div>
+        <div class="field"><label for="reviewWeight">重量（含单位）</label><input id="reviewWeight"></div>
+        <div class="field"><label for="reviewVolume">体积（含单位）</label><input id="reviewVolume"></div>
+        <div class="field"><label for="reviewPackages">包装数量</label><input id="reviewPackages"></div>
+        <div class="field"><label for="reviewPackageType">包装类型</label><input id="reviewPackageType"></div>
+        <div class="field"><label for="reviewServiceTime">运输／服务时效</label><input id="reviewServiceTime"></div>
+        <div class="field"><label for="reviewPrice">价格</label><input id="reviewPrice"></div>
+        <div class="field"><label for="reviewCompany">报价公司</label><input id="reviewCompany"></div>
+        <div class="field"><label for="reviewCurrency">币种</label><input id="reviewCurrency"></div>
+        <div class="field"><label for="reviewMethod">计价方式／单位</label><input id="reviewMethod"></div>
+        <div class="field"><label for="reviewQuoteTime">报价业务时间</label><input id="reviewQuoteTime" type="datetime-local"></div>
+        <div class="field full"><label for="reviewReason">理由（必填）</label><textarea id="reviewReason" required></textarea></div>
+        <div class="actions full"><button type="submit" class="btn-primary">提交审核</button><button type="button" id="btnReviewCancel" class="btn-secondary">取消</button></div>
+      </form>
+    </div>
+  </dialog>
+
+  <aside id="evidenceDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden tabindex="-1">
+    <div class="drawer-head">
+      <div><h2 id="drawerTitle">聊天窗口</h2><div id="drawerConversation" class="subtle">企业微信聊天记录 · 只读</div></div>
+      <div class="actions"><button id="btnDrawerContext" class="btn-secondary" hidden>加载更多上下文</button><button id="btnDrawerExpand" class="btn-secondary" aria-pressed="false">放大阅读</button><button id="btnDrawerClose" class="btn-secondary">关闭（Esc）</button></div>
+    </div>
+    <div id="drawerBody" class="drawer-body"><p class="empty">选择轮次、价格行或消息后读取证据。</p></div>
+  </aside>
+
   <script>
-    const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-    const formatTime = t => t ? String(t).slice(0, 19).replace('T', ' ') : '-';
-    
-    function statusClass(st) {
-      if (st === 'solved') return 'status-solved';
-      if (st === 'acknowledged') return 'status-ack';
-      if (st === 'unreplied') return 'status-unreplied';
-      return 'status-progress';
-    }
-    function statusLabel(st) {
-      if (st === 'solved') return '已有相关方案';
-      if (st === 'acknowledged') return '仅确认收到';
-      if (st === 'unreplied') return '未回复';
-      if (st === 'in_progress') return '跟进中';
-      return st || '未知';
-    }
+    (() => {
+      'use strict';
+      const $ = id => document.getElementById(id);
+      const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+      const formatTime = value => value ? String(value).replace('T', ' ').replace(/\+00:00$/, ' UTC').slice(0, 25) : '时间未知';
+      const shanghaiParts = value => { if (!value) return null; const date = new Date(value); if (Number.isNaN(date.getTime())) return null; return new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false}).formatToParts(date).reduce((out, part) => { out[part.type] = part.value; return out; }, {}); };
+      const priceTime = value => { const p = shanghaiParts(value); return p ? p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute : '时间待补充'; };
+      const chatTime = value => { const p = shanghaiParts(value); return p ? p.hour + ':' + p.minute : '时间未知'; };
+      const dateKey = value => { const p = shanghaiParts(value); return p ? p.year + '-' + p.month + '-' + p.day : '日期未知'; };
+      const pricingMethodText = value => ({total:'总价', lump_sum:'总价', perkg:'每公斤', per_kg:'每公斤', kg:'每公斤', per_cbm:'每立方米', per_package:'每件／箱'}[String(value || '').toLowerCase()] || value || '计价方式待补充');
+      const valueOrUnknown = value => value === null || value === undefined || value === '' ? '未知' : value;
+      const safeJson = value => { try { return JSON.stringify(value, null, 2); } catch (_) { return '{}'; } };
+      const statusLabels = {solved:'已有相关方案', acknowledged:'仅确认收到', unreplied:'未回复', in_progress:'跟进中', pending:'待审核', needs_review:'待审核', conflict:'版本冲突', approved:'已审核', rejected:'已驳回', current:'有效价格', deactivated:'已停用', not_applied_old:'较旧未采用', incomplete:'待完善', '有效价格':'有效价格', '待完善':'待完善', '待审核':'待审核'};
+      const statusKind = status => ({solved:'ok', acknowledged:'wait', unreplied:'bad', in_progress:'info', pending:'wait', needs_review:'wait', conflict:'bad', approved:'ok', rejected:'bad', current:'ok', deactivated:'neutral', not_applied_old:'neutral', incomplete:'wait', '待完善':'wait', '待审核':'wait', '有效价格':'ok'}[status] || 'neutral');
+      const statusText = status => statusLabels[status] || '待确认';
+      const subjectText = value => ({zhongji:'中技方', other:'其他企业', unknown:'未知分类', mixed:'多种分类'}[value] || '未分类');
 
-    function filterParams() {
-      const params = new URLSearchParams();
-      for (const [key, id] of Object.entries({subject:'subjectSelect',category:'categorySelect',status:'statusSelect',
-          account_id:'accountInput',conversation_name:'conversationInput',conversation_id:'conversationIdInput'})) {
-        const value = document.getElementById(id).value.trim();
-        if (value) params.set(key, value);
+      const state = {
+        generation: 0, report: null, csrf: null, config: null, reportAbort: null, priceAbort: null, messageAbort: null,
+        priceCursor: null, messageCursor: null, prices: [], messages: [], pendingPreview: null, correctionPreview: null, reviewCandidate: null,
+        drawerTrigger: null, drawerPreviousFocus: null, drawerScrollTop: 0, pageScrollX: 0, pageScrollY: 0, drawerRequest: 0, priceRequest: 0, messageRequest: 0,
+        drawerEvidence: null, drawerContextLimit: 20,
+      };
+
+      function setLoad(message, kind = '') { $('loadState').textContent = message; $('loadState').className = `meta ${kind}`; }
+      function scopeParams() {
+        const params = new URLSearchParams();
+        for (const [key, id] of Object.entries({account_id:'accountInput', source_database:'sourceDatabaseInput', conversation_name:'conversationInput', conversation_id:'conversationIdInput', subject:'subjectSelect', category:'categorySelect', status:'statusSelect'})) { const value = $(id).value.trim(); if (value) params.set(key, value); }
+        return params;
       }
-      return params;
-    }
-
-    let currentReport = null;
-    let lastSuccessfulReport = null;
-    let reportController = null;
-    let reportRequestSequence = 0;
-    let reportGeneration = 0;
-    let evidenceSearchTimer = null;
-    const loadedDetails = new Map();
-    const eventSearchText = new Map();
-    const detailControllers = new Map();
-
-    function setLoadState(message, kind = '') {
-      const node = document.getElementById('loadState');
-      node.textContent = message;
-      node.className = kind;
-    }
-
-    function setLoading(loading) {
-      document.querySelector('main').setAttribute('aria-busy', String(loading));
-      document.getElementById('btnRefresh').disabled = loading;
-    }
-
-    function renderScopeOptions(report) {
-      const select = document.getElementById('scopeSelect');
-      if (document.getElementById('conversationIdInput').value) return;
-      let options = report.scope_options || [];
-      if (!options.length && report.messages) {
-        const groups = {};
-        for (const row of report.messages) if (row.nesting_depth > 0) groups[row.conversation_id] = (groups[row.conversation_id] || 0) + 1;
-        options = Object.entries(groups).map(([conversation_id, message_count]) => ({conversation_id, message_count}));
+      function messageParams() {
+        const params = scopeParams(); for (const [key, id] of Object.entries({keyword:'messageKeyword', company:'messageCompany', message_type:'messageType'})) { const value = $(id).value.trim(); if (value) params.set(key, value); } return params;
       }
-      options = [...options].sort((a, b) => b.message_count - a.message_count || String(a.conversation_id).localeCompare(String(b.conversation_id)));
-      select.innerHTML = '<option value="">主群及全部转发</option>' + options.map((row, i) =>
-        `<option value="${esc(row.conversation_id)}">${i === 0 ? '重点转发' : '其他转发'} · ${row.message_count} 条</option>`).join('');
-    }
-
-    function categoryRows(report) {
-      if (Array.isArray(report.category_counts)) return report.category_counts;
-      const counts = {};
-      for (const event of report.events || []) for (const category of Object.keys(event.category_statuses || {})) counts[category] = (counts[category] || 0) + 1;
-      return Object.entries(counts).map(([category, count]) => ({category, count}));
-    }
-
-    function renderCategories(report) {
-      const select = document.getElementById('categorySelect');
-      const selected = select.value;
-      const counts = categoryRows(report).sort((a, b) => b.count - a.count || String(a.category).localeCompare(String(b.category)));
-      const available = [...new Set(report.available_categories || counts.map(row => row.category))].sort((a, b) => String(a).localeCompare(String(b)));
-      if (selected && !available.includes(selected)) {
-        select.value = '';
-        setLoadState(`当前范围不再包含“${selected}”，已清除类别筛选并重新加载。`, 'success');
-        loadData();
-        return false;
+      function priceParams() {
+        const params = scopeParams(); for (const [key, id] of Object.entries({company:'priceCompany', route:'priceRoute', keyword:'priceKeyword'})) { const value = $(id).value.trim(); if (value) params.set(key, value); } params.set('view', $('priceView').value); return params;
       }
-      select.innerHTML = '<option value="">全部类别</option>' + available.map(category =>
-        `<option value="${esc(category)}">${esc(category)}</option>`).join('');
-      select.value = selected;
-      const title = document.getElementById('categoryTitle');
-      const meta = document.getElementById('categoryMeta');
-      if (selected) {
-        title.textContent = '类别分布（当前筛选范围；一轮可包含多个类别） · 当前筛选内的共现类别';
-        meta.textContent = `选中“${selected}”后，${report.metrics.question_count} 表示筛选出的 ${report.metrics.question_count} 个业务轮次；其他类别数量表示其中同时带有该标签的轮次数，不表示独立问题。统计口径：多标签，共现类别会重复计入。`;
-      } else {
-        title.textContent = '类别分布（当前筛选范围；一轮可包含多个类别）';
-        meta.textContent = `当前业务轮次：${report.metrics.question_count}；统计口径：多标签，共现类别会重复计入。`;
+      function headersForWrite(extra = {}) { const headers = {'Content-Type':'application/json', ...extra}; if (state.csrf) headers['X-CSRF-Token'] = state.csrf; if (state.config?.reviewer_id) headers['X-Operator-Id'] = encodeURIComponent(state.config.reviewer_id); if (state.config?.reviewer_name) headers['X-Operator-Name'] = encodeURIComponent(state.config.reviewer_name); return headers; }
+      async function fetchJson(url, options = {}) { const response = await fetch(url, options); let value = {}; try { value = await response.json(); } catch (_) {} if (!response.ok) throw new Error(value.message || `请求失败（${response.status}）`); return value; }
+      function currentScopeObject() { return {account_id:$('accountInput').value.trim(), source_database:$('sourceDatabaseInput').value.trim(), conversation_id:$('conversationIdInput').value.trim(), conversation_name:$('conversationInput').value.trim()}; }
+      function requireScope() { const scope = currentScopeObject(); if (!scope.account_id || !scope.source_database || !scope.conversation_id) throw new Error('请先填写账号 ID、来源库和会话 ID，写入操作必须绑定明确范围。'); return scope; }
+      function quoteSummary(payload) { const p = payload || {}; return `${valueOrUnknown(p.origin_normalized || p.origin)} → ${valueOrUnknown(p.destination_normalized || p.destination)} · ${valueOrUnknown(p.weight_raw || p.weight_value)} · ${valueOrUnknown(p.volume_raw || p.volume_value)} · ${valueOrUnknown(p.package_raw || p.package_count)}${p.package_type ? ` ${p.package_type}` : ''} · ${valueOrUnknown(p.service_time_raw || p.service_time_id)}`; }
+      function renderStatus(value, extra = '') { return `<span class="status ${statusKind(value)}">${esc(statusText(value))}</span>${extra ? ` <span class="tag">${esc(extra)}</span>` : ''}`; }
+
+      async function loadConfig() { try { const [csrf, config] = await Promise.all([fetchJson('/api/wecom/csrf'), fetchJson('/api/wecom/config')]); state.csrf = csrf.csrf_token; state.config = config; $('reviewerSummary').textContent = config.reviewer_name ? `${config.responsibility_role}：${config.reviewer_name}` : `${config.responsibility_role}：未配置实际身份`; $('reviewerSummary').className = `tag ${config.reviewer_name ? '' : 'conflict'}`; } catch (error) { $('reviewerSummary').textContent = `价格维护接口不可用：${error.message}`; $('reviewerSummary').className = 'tag conflict'; } }
+
+      function renderCategories(report) { const select = $('categorySelect'); const selected = select.value; const available = [...new Set(report.available_categories || (report.category_counts || []).map(item => item.category))].sort(); select.innerHTML = '<option value="">全部</option>' + available.map(item => `<option value="${esc(item)}">${esc(item)}</option>`).join(''); select.value = available.includes(selected) ? selected : ''; const counts = report.category_counts || []; $('categoryList').innerHTML = counts.length ? counts.map(item => `<span class="tag">${esc(item.category)} · ${item.count}</span>`).join('') : '<p class="empty">暂无类别统计。</p>'; }
+      function eventRoute(event) { const clue = event.clues || {}; const routes = clue.route_items || []; return routes.length ? routes.map(row => `${valueOrUnknown(row.origin)} → ${valueOrUnknown(row.destination)}`).join('；') : `${valueOrUnknown(clue.origin)} → ${valueOrUnknown(clue.destination)}`; }
+      function eventGoods(event) { const clue = event.clues || {}; const parts = []; for (const key of ['packages','weight','volume','dimensions','special_goods']) if (clue[key]) parts.push(typeof clue[key] === 'string' ? clue[key] : safeJson(clue[key]).replace(/[{}\[\]"]+/g, '')); return parts.join(' · ') || '货物规格未知'; }
+      function renderEvents(report) { const events = report.events || []; $('eventsWrap').innerHTML = events.length ? events.map(event => `<article class="round" id="round-${esc(event.message_id)}" data-message-id="${esc(event.message_id)}"><div class="round-number">第 ${event.round} 轮</div><div><p class="round-title">${esc(formatTime(event.sent_at))} · ${esc(event.sender_label || `${event.sender_name} @公司未知`)}</p><div class="round-summary">${esc(eventRoute(event))} · ${esc(eventGoods(event))}</div><div class="round-meta">${event.response_count ?? (event.responses || []).length} 条回复 · ${renderStatus(event.status)}${event.needs_review ? ' <span class="tag pending">待复核</span>' : ''}</div></div><div class="actions"><button class="btn-secondary evidence-button" data-evidence-id="${esc(event.message_id)}" data-target="round-${esc(event.message_id)}">查看聊天证据</button></div></article>`).join('') : '<p class="empty">当前范围暂无业务轮次。</p>'; }
+      function renderRoutes(report) { const routes = report.routes || []; $('routesWrap').innerHTML = routes.length ? `<table class="table-tight"><thead><tr><th>路线</th><th>轮次</th><th>旧报告报价引用</th></tr></thead><tbody>${routes.map(route => `<tr><td>${esc(valueOrUnknown(route.origin))} → ${esc(valueOrUnknown(route.destination))}<br><span class="subtle">${esc(route.region)}</span></td><td>${route.question_count} / ${route.solved_count}</td><td>${(route.quotes || []).map(quote => `${esc(valueOrUnknown(quote.amount))} · ${esc(valueOrUnknown(quote.currency))} · ${esc(valueOrUnknown(quote.delivery_time))} <span class="subtle">（${esc(quote.association_basis || '有来源关联')}）</span>`).join('<br>') || '暂无明确报价'}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前范围暂无路线分析。</p>'; }
+      function renderReport(report) { state.report = report; renderCategories(report); renderEvents(report); renderRoutes(report); const m = report.metrics || {}; const c = report.coverage || {}; $('statTotal').textContent = m.question_count ?? 0; $('statSolved').textContent = m.solved_count ?? 0; $('statAck').textContent = m.ack_only_count ?? 0; $('statUnreplied').textContent = m.unreplied_count ?? 0; $('statProgress').textContent = m.in_progress_count ?? 0; $('statMessageCount').textContent = c.conversation_message_count ?? c.message_count ?? 0; $('coverage').textContent = `${c.database_backed_count && c.database_backed_count === (c.conversation_message_count || 0) ? '本地数据库来源已核验。' : '当前范围含未核验材料。'}业务轮次 ${m.question_count ?? 0} 笔；已导入消息 ${c.conversation_message_count ?? c.message_count ?? 0} 条；${formatTime(c.first_message_at)} 至 ${formatTime(c.last_message_at)}；嵌套 ${c.nested_message_count ?? 0} 条，最大深度 ${c.max_nesting_depth ?? 0}；未展开转发 ${c.unexpanded_forward_count ?? 0} 条，未解析媒体 ${c.unparsed_media_count ?? 0} 条。${c.note || ''}`; const stat = (label, value) => `${label}：均值 ${value?.mean_seconds ?? '—'} 秒，中位数 ${value?.median_seconds ?? '—'} 秒，样本 ${value?.sample_count ?? 0}`; $('latencySummary').textContent = [stat('首次确认',m.ack_latency), stat('首次有效回复',m.first_response_latency), stat('首次方案',m.solution_latency), stat('最终方案',m.final_solution_latency)].join('；'); const special = report.special_goods || {}, association = report.association_quality || {}; $('specialGoodsSummary').textContent = `特殊货物 ${special.question_count ?? 0} 笔；已有方案 ${special.handled_count ?? 0}。待复核轮次 ${association.questions_flagged_for_review ?? 0}。`; }
+      async function loadReport(generation) { if (state.reportAbort) state.reportAbort.abort(); state.reportAbort = new AbortController(); const params = scopeParams(); params.set('view','index'); try { const report = await fetchJson('/api/wecom/report?' + params, {signal:state.reportAbort.signal}); if (generation !== state.generation) return; renderReport(report); } catch (error) { if (error.name === 'AbortError' || generation !== state.generation) return; $('eventsWrap').innerHTML = '<p class="empty">旧报告接口暂时不可用；价格和全量消息仍可单独读取。</p>'; setLoad(`报告加载失败：${error.message}`, 'error'); } }
+
+      function priceRow(item, pending = false) { const p = item.payload || {}; const stateValue = pending ? item.review_status : item.state; const source = item.source_scope || {}; const pendingMark = item.has_pending_update ? `<span class="tag pending">有待审核更新（${item.pending_update_count}）</span>` : ''; const action = pending ? `<button class="btn-secondary review-button" data-candidate-id="${esc(item.candidate_id)}">审核</button>` : `<div class="actions"><button class="btn-secondary evidence-button" data-evidence-id="${esc(p.source_message_id || '')}" data-source-db="${esc(source.source_database || '')}" ${p.source_message_id ? '' : 'disabled'}>查看证据</button>${item.state === 'current' ? `<button class="btn-danger deactivate-button" data-record-id="${esc(item.record_id)}" data-version="${item.version}">停用</button>` : ''}</div>`; return `<tr><td>${esc(valueOrUnknown(p.origin_raw || p.origin_normalized))} → ${esc(valueOrUnknown(p.destination_raw || p.destination_normalized))}</td><td>${esc(valueOrUnknown(p.weight_raw || p.weight_value))} ${esc(p.weight_unit || '')}<br>${esc(valueOrUnknown(p.volume_raw || p.volume_value))} ${esc(p.volume_unit || '')}<br>${esc(valueOrUnknown(p.package_raw || p.package_count))} ${esc(p.package_type || '')}</td><td>${esc(valueOrUnknown(p.service_time_raw || p.service_time_id))}</td><td><b>${esc(valueOrUnknown(p.price_raw))}</b><br><span class="subtle">${esc(p.pricing_method || '计价方式未知')}</span></td><td><span class="tag company">${esc(p.quote_company_name || '公司未知')}</span><br><span class="subtle">${esc(p.quoted_by_name || '报价方未知')}</span></td><td>${esc(p.currency || '币种未知')}<br>${esc(p.pricing_method || '单位未知')}</td><td>${esc(formatTime(p.business_time || item.business_time))}<br><span class="subtle">${esc(p.validity_note || '有效期未注明')}</span></td><td>${renderStatus(stateValue, pending ? (item.status_reason || '') : '')}${pendingMark}${item.adoption_status && item.adoption_status !== 'applied' ? `<br><span class="subtle">${esc(statusText(item.adoption_status))}</span>` : ''}</td><td>${action}</td></tr>`; }
+      function renderPrices(data) { const pending = data.view === 'pending'; state.prices = data._append ? [...state.prices, ...(data.items || [])] : (data.items || []); window.__pendingCandidates = pending ? state.prices : []; const items = state.prices; $('pricesWrap').innerHTML = items.length ? `<table><thead><tr><th>起点 → 终点</th><th>重量／体积／包装</th><th>服务时效</th><th>价格</th><th>报价公司／人员</th><th>币种／计价方式</th><th>报价时间／有效期</th><th>状态</th><th>操作</th></tr></thead><tbody>${items.map(item => priceRow(item, pending)).join('')}</tbody></table>` : `<p class="empty">${pending ? '当前范围没有待审核候选。' : '当前范围没有现行价格；待审核金额不会填入最新价格。'}</p>`; $('pricePageState').textContent = `当前视图 ${data.total ?? items.length} 条 · 已加载 ${items.length} 条`; $('btnPriceMore').hidden = !data.next_cursor; state.priceCursor = data.next_cursor; }
+      async function loadPrices(generation, append = false) { const request = ++state.priceRequest; if (state.priceAbort) state.priceAbort.abort(); state.priceAbort = new AbortController(); const params = priceParams(); if (append && state.priceCursor) params.set('cursor', state.priceCursor); params.set('limit','100'); try { const data = await fetchJson('/api/wecom/prices?' + params, {signal:state.priceAbort.signal}); if (generation !== state.generation || request !== state.priceRequest) return; data._append = append; renderPrices(data); } catch (error) { if (error.name === 'AbortError' || generation !== state.generation || request !== state.priceRequest) return; $('pricesWrap').innerHTML = `<p class="empty">价格维护接口不可用：${esc(error.message)}</p>`; $('priceNotice').hidden = false; $('priceNotice').textContent = '价格服务读取失败；旧报告和全量消息不会因此宣称保存成功。'; } }
+      async function loadPendingCount(generation) { try { const params = scopeParams(); params.set('view','pending'); params.set('limit','1'); const data = await fetchJson('/api/wecom/prices?' + params); if (generation === state.generation) $('statPendingPrices').textContent = data.total ?? 0; } catch (_) {} }
+
+      // The price maintenance table is deliberately a first-class surface: seven
+      // core columns stay visible without expanding a business round.
+      // V2 functions are installed after the legacy declarations below.
+      function payloadField(p, keys) { for (const key of keys) if (p[key] !== undefined && p[key] !== null && String(p[key]).trim() !== '') return p[key]; return ''; }
+      function payloadEntry(p, keys) { for (const key of keys) if (p[key] !== undefined && p[key] !== null && String(p[key]).trim() !== '') return {key, value:p[key]}; return {key:'', value:''}; }
+      function missingField(p, item, key, keys) { const missing = item.missing_fields || p.missing_fields || []; return missing.includes(key) || !payloadField(p, keys); }
+      function cellValue(p, item, key, keys, unitKey) {
+        const entry = payloadEntry(p, keys), value = entry.value;
+        if (!value || missingField(p, item, key, keys)) return '<span class="price-missing">待补充</span>';
+        const text = String(value).trim(), unit = unitKey && p[unitKey] ? String(p[unitKey]).trim() : '';
+        return ` ${esc(unit && !text.toLowerCase().includes(unit.toLowerCase()) ? text + ' ' + unit : text)} `;
       }
-      document.getElementById('clearCategory').disabled = !selected;
-      const list = document.getElementById('categoryList');
-      list.innerHTML = counts.length ? counts.map(row => {
-        const active = row.category === selected;
-        return `<button type="button" class="cat-item${active ? ' active' : ''}" data-category="${esc(row.category)}" aria-label="${esc(row.category)}，${row.count} 个业务轮次" aria-pressed="${String(active)}"><span>${esc(row.category)}</span><b>${row.count}</b></button>`;
-      }).join('') : '<p class="empty">当前筛选无业务轮次或类别。</p>';
-      return true;
-    }
-
-    function renderReport(report) {
-      if (!renderCategories(report)) return false;
-      currentReport = report;
-      reportGeneration += 1;
-      for (const controller of detailControllers.values()) controller.abort();
-      detailControllers.clear();
-      loadedDetails.clear();
-      eventSearchText.clear();
-      const c = report.coverage || {}, m = report.metrics || {};
-      for (const [id, key] of Object.entries({statTotal:'question_count',statSolved:'solved_count',statAck:'ack_only_count',statUnreplied:'unreplied_count',statProgress:'in_progress_count'})) document.getElementById(id).textContent = m[key] ?? 0;
-      const filteredMessages = c.filtered_message_count ?? c.message_count ?? 0;
-      const conversationMessages = c.conversation_message_count ?? c.message_count ?? 0;
-      document.getElementById('statFilteredMessages').textContent = filteredMessages;
-      document.getElementById('statCatCount').textContent = conversationMessages;
-      document.getElementById('coverage').textContent = `${c.database_backed_count === conversationMessages && conversationMessages ? '本地数据库来源已核验。' : '含来源未核验材料。'}当前业务轮次 ${m.question_count ?? 0} 笔；当前筛选相关消息 ${filteredMessages} 条；当前会话全量消息 ${conversationMessages} 条；${formatTime(c.first_message_at)} 至 ${formatTime(c.last_message_at)}；嵌套 ${c.nested_message_count ?? 0} 条，最大深度 ${c.max_nesting_depth ?? 0}；未完整展开转发 ${c.unexpanded_forward_count ?? 0} 条，未解析媒体 ${c.unparsed_media_count ?? 0} 条。同名未核验材料排除 ${c.excluded_unverified_source_count ?? 0} 条。${c.note || ''}`;
-      const stat = (label, s = {}) => `${label}：均值 ${s.mean_seconds ?? '—'} 秒，中位数 ${s.median_seconds ?? '—'} 秒，样本 ${s.sample_count ?? 0}`;
-      document.getElementById('latencySummary').textContent = [stat('首次确认', m.ack_latency), stat('首次有效回复', m.first_response_latency), stat('首次方案', m.solution_latency), stat('最终方案', m.final_solution_latency)].join('；');
-      const events = report.events || [];
-      const max = Math.max(1, ...events.flatMap(e => [e.ack_seconds || 0, e.final_solution_seconds || 0]));
-      document.getElementById('latencyChart').innerHTML = events.length ? events.map(e => `<div style="margin:8px 0" aria-label="轮次${e.round}，确认${e.ack_seconds ?? '未知'}秒，最终方案${e.final_solution_seconds ?? '未知'}秒"><small>轮次 ${e.round} ${esc(formatTime(e.sent_at))}</small><br>确认 ${e.ack_seconds ?? '—'} 秒 <span class="latency-bar latency-ack" style="width:${(e.ack_seconds || 0) / max * 45}%"></span><br>方案 ${e.final_solution_seconds ?? '—'} 秒 <span class="latency-bar" style="width:${(e.final_solution_seconds || 0) / max * 45}%"></span></div>`).join('') : '<p class="empty">当前筛选暂无时延数据。</p>';
-      const s = report.special_goods || {}, t = report.shipment_constraints || {}, a = report.association_quality || {};
-      const rate = n => n == null ? '—' : (n * 100).toFixed(1) + '%';
-      document.getElementById('specialGoodsSummary').textContent = `特殊货物 ${s.question_count ?? 0} 笔；已给方案 ${s.handled_count ?? 0}（${rate(s.handling_rate)}）；拒单 ${s.rejected_count ?? 0}（${rate(s.rejection_rate)}）。特殊限制 ${t.question_count ?? 0} 笔，处理率 ${rate(t.handling_rate)}。启发式确认关联 ${a.heuristic_ack_count ?? 0} 次，待复核问题 ${a.questions_flagged_for_review ?? 0} 笔。`;
-      const routes = report.routes || [];
-      document.getElementById('routesWrap').innerHTML = routes.length ? `<table><thead><tr><th>路线 / 区域</th><th>提问 / 已归属方案</th><th>报价与时效</th></tr></thead><tbody>${routes.map(r => `<tr><td>${esc(r.origin || '未知')} → ${esc(r.destination || '未唯一确定')}<br><small>${esc(r.region)}</small></td><td>${r.question_count} / ${r.solved_count}</td><td>${(r.quotes || []).map(q => `<a href="#event-${q.round}">轮次 ${q.round}</a>：${esc(q.amount ?? '无金额')} · ${esc(q.currency ?? '币种未注明')} · ${esc(q.delivery_time ?? '时效未注明')}<br><small>${esc(q.association_basis)}</small>`).join('<br>')}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前筛选暂无路线或报价。</p>';
-      document.getElementById('issuesWrap').innerHTML = events.length ? `<table><thead><tr><th>轮次 / 时间 / 人员</th><th>类别</th><th>状态</th></tr></thead><tbody>${events.map(e => `<tr><td><a href="#event-${e.round}">轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</a></td><td>${Object.keys(e.category_statuses || {}).map(esc).join('、')}</td><td>${statusLabel(e.status)}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前筛选暂无业务轮次。</p>';
-      renderScopeOptions(report);
-      renderEventIndex(events);
-      renderMessages();
-      applyEvidenceFilter();
-      return true;
-    }
-
-    function renderEventIndex(events) {
-      const wrap = document.getElementById('eventsWrap');
-      const items = events.map(e => {
-        const search = [e.sent_at, e.sender_name, e.subject_bucket, e.status, e.text_preview, ...Object.keys(e.category_statuses || {})].join(' ');
-        eventSearchText.set(e.message_id, search);
-        return `<details class="event" id="event-${e.round}" data-message-id="${esc(e.message_id)}" data-search="${esc(search)}"><summary><b>轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</b> <span class="tag tag-${esc(e.subject_bucket)}">${esc(e.subject_bucket)}</span> <span class="${statusClass(e.status)}">${statusLabel(e.status)}</span>${e.needs_review ? ' · 待复核' : ''}</summary><div class="event-detail"><p class="evidence-note">展开时读取当前轮次正文、相关回复、关联依据和父级证据。</p></div></details>`;
-      }).join('');
-      wrap.innerHTML = items + `<p id="eventsEmpty" class="empty" ${events.length ? 'hidden' : ''}>当前筛选无匹配的物流提问。</p>`;
-    }
-
-    function renderEventBody(event) {
-      const clues = event.clues || {};
-      const responses = event.responses || [];
-      return `<div class="message-text">${esc(event.text)}</div><p>起运 ${esc(clues.origin ?? '未知')} → ${esc(clues.destination ?? '未知')} · 首次确认 ${event.ack_seconds ?? '—'} 秒 · 首次方案 ${event.solution_seconds ?? '—'} 秒 · 最终方案 ${event.final_solution_seconds ?? '—'} 秒</p>${clues.followup_to_message_id ? `<p>前一诉求：<a href="#message-${esc(clues.followup_to_message_id)}">查看证据</a>（${esc(clues.followup_basis)}）</p>` : ''}<details><summary>全部规格、路线与类别状态</summary><pre class="message-text">${esc(JSON.stringify({entities: clues, routes: event.route_coverage, category_statuses: event.category_statuses}, null, 2))}</pre></details><p><a href="#message-${esc(event.message_id)}">原消息及父级证据</a></p>${responses.map(r => `<details><summary>${esc(formatTime(r.sent_at))} · ${esc(r.sender_name)} · ${esc(r.kind)} · ${r.latency_seconds} 秒 · is_solution=${r.is_solution}</summary><div class="message-text">${esc(r.text)}</div><small>关联依据 ${esc(r.basis)} · <a href="#message-${esc(r.message_id)}">原始回复</a></small></details>`).join('')}`;
-    }
-
-    function renderMessage(row) {
-      const provenance = row.provenance || {};
-      const search = [row.sent_at, row.sender_name, row.subject_bucket, row.parse_status, row.text].join(' ');
-      return `<details class="evidence-message" id="message-${esc(row.id)}" data-search="${esc(search)}"><summary>${esc(formatTime(row.sent_at))} · ${esc(row.sender_name)} · ${esc(row.subject_bucket)} · 层级 ${row.nesting_depth} · ${esc(row.parse_status)}</summary><div class="message-text">${esc(row.text)}</div><p><small>${provenance.message_id_basis === 'native_payload_position' ? '本地记录键（载荷未提供原消息 ID）' : '原消息 ID'} ${esc(row.message_id)}<br>${esc(row.source_reference)}</small></p>${row.parent_id ? `<a href="#message-${esc(row.parent_id)}">跳转父消息</a>` : '<small>主群消息</small>'}<details><summary>来源哈希、原始身份与引用</summary><pre class="message-text">${esc(JSON.stringify(provenance, null, 2))}</pre></details></details>`;
-    }
-
-    function renderMessages() {
-      const rows = new Map();
-      for (const detail of loadedDetails.values()) for (const row of [...(detail.messages || []), ...(detail.ancestors || [])]) rows.set(row.id, row);
-      const values = [...rows.values()].sort((a, b) => String(a.sent_at || '').localeCompare(String(b.sent_at || '')) || String(a.id).localeCompare(String(b.id)));
-      document.getElementById('messagesWrap').innerHTML = values.length ? values.map(renderMessage).join('') + '<p id="messagesEmpty" class="empty" hidden>当前检索无匹配消息。</p>' : '<p class="empty">展开业务轮次后，这里显示该轮次的原消息、回复和父级证据。</p>';
-    }
-
-    function applyEvidenceFilter() {
-      const term = document.getElementById('evidenceSearch').value.trim().toLowerCase();
-      const eventNodes = [...document.querySelectorAll('#eventsWrap .event')];
-      let visibleEvents = 0;
-      for (const node of eventNodes) {
-        const search = `${node.dataset.search || ''} ${eventSearchText.get(node.dataset.messageId) || ''}`.toLowerCase();
-        node.hidden = Boolean(term && !search.includes(term));
-        if (!node.hidden) visibleEvents += 1;
+      function itemStatus(item, pending) {
+        if (item.display_status) return item.display_status;
+        if (pending || ['pending','needs_review','conflict'].includes(item.review_status)) return '待审核';
+        const p = item.payload || {};
+        return (item.missing_fields || p.missing_fields || []).length ? '待完善' : (item.state === 'deactivated' ? '已停用' : '有效价格');
       }
-      const emptyEvents = document.getElementById('eventsEmpty');
-      if (emptyEvents) emptyEvents.hidden = visibleEvents !== 0;
-      const messageNodes = [...document.querySelectorAll('#messagesWrap .evidence-message')];
-      let visibleMessages = 0;
-      for (const node of messageNodes) {
-        node.hidden = Boolean(term && !(node.dataset.search || node.textContent).toLowerCase().includes(term));
-        if (!node.hidden) visibleMessages += 1;
+      function statusNote(item) {
+        const fields = item.missing_fields || item.payload?.missing_fields || [];
+        return fields.length ? '缺少 ' + fields.slice(0, 3).join('、') + (fields.length > 3 ? ' 等' : '') : '';
       }
-      const emptyMessages = document.getElementById('messagesEmpty');
-      if (emptyMessages) emptyMessages.hidden = visibleMessages !== 0;
-    }
-
-    async function loadEventDetail(node) {
-      if (!currentReport || node.dataset.loaded === 'true') return;
-      const messageId = node.dataset.messageId;
-      const generation = reportGeneration;
-      const controller = new AbortController();
-      detailControllers.set(messageId, controller);
-      const container = node.querySelector('.event-detail');
-      container.innerHTML = '<p class="evidence-note">正在读取本轮完整证据…</p>';
-      try {
-        const params = filterParams();
-        params.set('message_id', messageId);
-        const response = await fetch('/api/wecom/report-detail?' + params, {signal: controller.signal});
-        if (!response.ok) throw new Error(response.status === 404 ? '当前筛选下找不到该业务轮次' : '详情接口不可用');
-        const detail = await response.json();
-        if (generation !== reportGeneration || !currentReport) return;
-        loadedDetails.set(messageId, detail);
-        eventSearchText.set(messageId, [node.dataset.search, detail.event.text, ...(detail.event.responses || []).map(r => r.text)].join(' '));
-        node.dataset.loaded = 'true';
-        container.innerHTML = renderEventBody(detail.event);
-        renderMessages();
-        applyEvidenceFilter();
-      } catch (error) {
-        if (error.name === 'AbortError') return;
-        container.innerHTML = `<p class="status-message error">本轮证据加载失败：${esc(error.message)}。重新展开可重试。</p>`;
-      } finally {
-        if (detailControllers.get(messageId) === controller) detailControllers.delete(messageId);
+      function priceRowV2(item, pending = false) {
+        const p = item.payload || {}, source = item.source_scope || {}, status = itemStatus(item, pending), needsReview = pending || (!item.record_id && item.candidate_id) || ['pending','needs_review','conflict'].includes(item.review_status);
+        const msgId = payloadField(p, ['source_message_id','message_id']) || item.source_message_id || '';
+        const pendingMark = item.has_pending_update ? `<span class="tag pending">有待审核更新（${item.pending_update_count}）</span>` : '';
+        const actions = `<div class="actions"><button class="btn-secondary price-detail-button" data-record-id="${esc(item.record_id || '')}" data-candidate-id="${esc(item.candidate_id || '')}">查看明细</button><button class="btn-secondary price-export-button" data-record-id="${esc(item.record_id || '')}" data-candidate-id="${esc(item.candidate_id || '')}">导出此条 Excel</button><button class="btn-secondary evidence-button" data-evidence-id="${esc(msgId)}" data-source-db="${esc(source.source_database || '')}" ${msgId ? '' : 'disabled'}>查看证据</button>${needsReview ? `<button class="btn-secondary review-button" data-candidate-id="${esc(item.candidate_id || '')}">审核</button>` : (item.state === 'current' ? `<button class="btn-danger deactivate-button" data-record-id="${esc(item.record_id || '')}" data-version="${esc(item.version || '')}">停用</button>` : '')}</div>`;
+        return `<tr><td>${cellValue(p,item,'origin',['origin_raw','origin_normalized','origin'])}</td><td>${cellValue(p,item,'destination',['destination_raw','destination_normalized','destination'])}</td><td>${cellValue(p,item,'weight',['weight_raw','weight_value'],'weight_unit')}</td><td>${cellValue(p,item,'volume',['volume_raw','volume_value'],'volume_unit')}</td><td>${cellValue(p,item,'package_count',['package_raw','package_count'],'package_type')}</td><td>${cellValue(p,item,'service_time',['service_time_raw','service_time_id','service_time'])}</td><td><span class="price-main-value">${cellValue(p,item,'price',['price_raw','price_amount','price'])}</span><br><span class="subtle">${esc(p.currency || '币种待补充')} · ${esc(pricingMethodText(p.pricing_method))}</span></td><td><span class="tag company">${esc(p.quote_company_name || '公司待补充')}</span><br><span class="subtle">${esc(priceTime(p.business_time || item.business_time))}</span></td><td>${renderStatus(status, statusNote(item))}${pendingMark}</td><td>${actions}</td></tr>`;
       }
-    }
+      function renderPricesV2(data) {
+        const pending = data.view === 'pending';
+        state.prices = data._append ? [...state.prices, ...(data.items || [])] : (data.items || []);
+        window.__pendingCandidates = state.prices.filter(item => item.candidate_id);
+        const items = state.prices;
+        $('pricesWrap').innerHTML = items.length ? `<table class="price-table"><thead><tr><th>起点</th><th>终点</th><th>重量</th><th>体积</th><th>包装数量</th><th>时效</th><th>价格</th><th>报价公司／时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${items.map(item => priceRowV2(item, pending)).join('')}</tbody></table>` : `<p class="empty">${pending ? '当前范围没有待审核候选。' : data.view === 'incomplete' ? '当前范围没有待完善报价。' : '当前范围没有匹配报价；请先刷新或导入维护数据。'}</p>`;
+        $('pricePageState').textContent = `当前视图 ${data.view || 'details'} · ${data.total ?? items.length} 条 · 已加载 ${items.length} 条`;
+        $('btnPriceMore').hidden = !data.next_cursor; state.priceCursor = data.next_cursor;
+      }
+      function priceDetailParams(button) {
+        const params = scopeParams();
+        if (button.dataset.recordId) params.set('record_id', button.dataset.recordId);
+        if (button.dataset.candidateId) params.set('candidate_id', button.dataset.candidateId);
+        return params;
+      }
+      function humanSource(value) {
+        if (!value) return '未记录';
+        if (typeof value === 'string') return value;
+        return value.excerpt || value.quoted_text || value.label || value.description || '已记录';
+      }
+      function detailMarkup(item) {
+        const p = item.payload || item, missing = item.missing_fields || p.missing_fields || [];
+        const val = (key, keys, unit) => missing.includes(key) || !payloadField(p, keys) ? '<span class="price-missing">待补充</span>' : esc(String(payloadField(p, keys)) + (unit && p[unit] ? ' ' + p[unit] : ''));
+        const sources = item.field_sources || p.field_sources || {};
+        const sourceRows = Object.entries(sources).map(([key, source]) => `<tr><td>${esc(key)}</td><td>${esc(humanSource(source))}</td></tr>`).join('');
+        return `<div class="role-legend"><span class="tag">业务方向：揽收车队群聊分析</span>${renderStatus(itemStatus(item, item.review_status === 'pending'))}</div><table class="table-tight price-detail"><tbody><tr><th>起点</th><td>${val('origin',['origin_raw','origin_normalized','origin'])}</td><th>终点</th><td>${val('destination',['destination_raw','destination_normalized','destination'])}</td></tr><tr><th>重量</th><td>${val('weight',['weight_raw','weight_value'],'weight_unit')}</td><th>体积</th><td>${val('volume',['volume_raw','volume_value'],'volume_unit')}</td></tr><tr><th>包装数量</th><td>${val('package_count',['package_raw','package_count'],'package_type')}</td><th>时效</th><td>${val('service_time',['service_time_raw','service_time_id','service_time'])}</td></tr><tr><th>价格</th><td>${val('price',['price_raw','price_amount','price'])}</td><th>公司</th><td>${esc(p.quote_company_name || '待补充')}</td></tr><tr><th>币种</th><td>${esc(p.currency || '待补充')}</td><th>计价方式</th><td>${esc(pricingMethodText(p.pricing_method))}</td></tr><tr><th>报价时间</th><td colspan="3">${esc(priceTime(p.business_time || item.business_time))}</td></tr></tbody></table>${sourceRows ? `<h3>字段来源与关联依据</h3><table class="table-tight"><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>${sourceRows}</tbody></table>` : ''}`;
+      }
+      async function openPriceDetail(button) {
+        const request = ++state.priceRequest;
+        try {
+          const item = await fetchJson('/api/wecom/price-detail?' + priceDetailParams(button));
+          if (request !== state.priceRequest) return;
+          $('priceDetailBody').innerHTML = detailMarkup(item.item || item);
+          $('priceDetailDialog').showModal();
+        } catch (error) { setLoad(`报价明细读取失败：${error.message}`, 'error'); }
+      }
+      function exportPrice(button) { window.open('/api/wecom/price-export?' + priceDetailParams(button), '_blank', 'noopener'); }
+      function reviewValue(p, keys) { return payloadField(p, keys); }
+      function openReviewV2(candidate) {
+        state.reviewCandidate = candidate;
+        const p = candidate.payload || {};
+        $('reviewCandidateSummary').textContent = ` ${quoteSummary(p)} · 当前状态 ${statusText(candidate.display_status || candidate.review_status || '待审核')}`;
+        $('reviewOrigin').value = reviewValue(p, ['origin_raw','origin_normalized','origin']);
+        $('reviewDestination').value = reviewValue(p, ['destination_raw','destination_normalized','destination']);
+        $('reviewWeight').value = reviewValue(p, ['weight_raw','weight_value']);
+        $('reviewVolume').value = reviewValue(p, ['volume_raw','volume_value']);
+        $('reviewPackages').value = reviewValue(p, ['package_count','package_raw']);
+        $('reviewPackageType').value = p.package_type || '';
+        $('reviewServiceTime').value = reviewValue(p, ['service_time_raw','service_time_id','service_time']);
+        $('reviewPrice').value = reviewValue(p, ['price_raw','price_amount','price']);
+        $('reviewCompany').value = p.quote_company_name || '';
+        $('reviewCurrency').value = p.currency || '';
+        $('reviewMethod').value = p.pricing_method || '';
+        $('reviewQuoteTime').value = p.business_time ? String(p.business_time).slice(0,16) : '';
+        $('reviewReason').value = ''; $('reviewAction').value = 'approve'; $('reviewDialog').showModal();
+      }
+      async function submitReviewV2(event) {
+        event.preventDefault(); const candidate = state.reviewCandidate; if (!candidate) return;
+        const action = $('reviewAction').value;
+        const correction = action === 'correct_and_approve' ? {origin:$('reviewOrigin').value.trim(), destination:$('reviewDestination').value.trim(), weight:$('reviewWeight').value.trim(), volume:$('reviewVolume').value.trim(), package_count:$('reviewPackages').value.trim(), package_type:$('reviewPackageType').value.trim(), service_time:$('reviewServiceTime').value.trim(), price:$('reviewPrice').value.trim(), quote_company_name:$('reviewCompany').value.trim(), currency:$('reviewCurrency').value.trim(), pricing_method:$('reviewMethod').value.trim(), quote_time:$('reviewQuoteTime').value ? new Date($('reviewQuoteTime').value).toISOString() : ''} : undefined;
+        try {
+          const result = await fetchJson(`/api/wecom/price-candidates/${encodeURIComponent(candidate.candidate_id)}/review`, {method:'POST', headers:headersForWrite(), body:JSON.stringify({action, reason:$('reviewReason').value.trim(), correction, expected_version:candidate.base_version, account_id:candidate.source_scope?.account_id, source_database:candidate.source_scope?.source_database, conversation_id:candidate.source_scope?.conversation_id, idempotency_key:`review-${candidate.candidate_id}-${action}`})});
+          $('reviewDialog').close(); setLoad(`审核完成：${result.applied ? '已尝试更新现行价格' : '未替换现行价格'}。`, 'success'); await loadPrices(state.generation); await loadPendingCount(state.generation);
+        } catch (error) { $('reviewCandidateSummary').textContent = error.message; }
+      }
+      function correctionPayloadV2(mode) { return {mode, account_id:$('accountInput').value.trim(), source_database:$('sourceDatabaseInput').value.trim(), conversation_id:$('conversationIdInput').value.trim() || null, message_ids:splitIds($('correctionMessageIds').value), sender_ids:splitIds($('correctionSenderIds').value), normalized_company_id:$('correctionCompanyId').value.trim(), normalized_company_name:$('correctionCompanyName').value.trim(), alias:$('correctionAlias').value.trim() || null, business_role:$('correctionRole').value || null, basis:$('correctionBasis').value.trim()}; }
 
-    async function loadData() {
-      const requestId = ++reportRequestSequence;
-      if (reportController) reportController.abort();
-      for (const controller of detailControllers.values()) controller.abort();
-      detailControllers.clear();
-      const controller = new AbortController();
-      reportController = controller;
-      setLoading(true);
-      setLoadState('正在加载当前筛选结果…');
-      try {
-        const params = filterParams();
-        params.set('view', 'index');
-        const response = await fetch('/api/wecom/report?' + params, {signal: controller.signal});
-        if (!response.ok) throw new Error('报表接口不可用');
-        const report = await response.json();
-        if (requestId !== reportRequestSequence) return;
-        if (!renderReport(report)) return;
-        lastSuccessfulReport = report;
-        setLoadState('当前筛选结果已更新。', 'success');
-      } catch (error) {
-        if (error.name === 'AbortError' || requestId !== reportRequestSequence) return;
-        setLoadState(lastSuccessfulReport ? `数据加载失败：${error.message}；已保留上一次有效结果。` : `数据加载失败：${error.message}`, 'error');
-        if (!lastSuccessfulReport) {
-          document.getElementById('eventsWrap').innerHTML = '<p class="empty">暂时无法读取业务轮次。</p>';
-          document.getElementById('messagesWrap').innerHTML = '<p class="empty">暂无可显示的证据。</p>';
-          document.getElementById('categoryList').innerHTML = '<p class="empty">暂无类别统计。</p>';
+      function renderCompanies(data) { const items = data.items || []; $('companiesWrap').innerHTML = items.length ? `<table class="table-tight"><thead><tr><th>显示公司</th><th>状态</th><th>消息数</th><th>企业分类</th><th>作者</th></tr></thead><tbody>${items.map(item => `<tr><td><span class="tag company">${esc(item.display_name)}</span></td><td>${renderStatus(item.company_status === 'conflict' ? 'conflict' : item.company_status === 'known' ? 'current' : 'needs_review')}</td><td>${item.message_count}</td><td>${esc(subjectText(item.subject_bucket))}</td><td>${esc((item.author_names || []).join('、') || '未知')}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前范围暂无公司记录。</p>'; }
+      async function loadCompanies(generation) { try { const data = await fetchJson('/api/wecom/companies?' + scopeParams()); if (generation === state.generation) renderCompanies(data); } catch (error) { if (generation === state.generation) $('companiesWrap').innerHTML = `<p class="empty">公司接口不可用：${esc(error.message)}</p>`; } }
+
+      function renderMessageList(items) { if (!items.length) { $('messagesWrap').innerHTML = '<p class="empty">当前范围没有匹配消息。</p>'; return; } let lastDate = null; const html = []; for (const row of items) { const date = dateKey(row.sent_at); if (date !== lastDate) { html.push(`<div class="date-separator"><span>${esc(date)}</span></div>`); lastDate = date; } html.push(`<article class="message-row" id="message-row-${esc(row.id)}" data-message-id="${esc(row.id)}"><div class="message-time">${esc(formatTime(row.sent_at))}<br><span class="message-type">${esc(row.message_type || '消息')}</span></div><div><div class="message-author">${esc(row.sender_label || `${row.sender_name || '未知人员'} @公司未知`)}</div><div class="message-preview">${esc(row.text_preview || '正文未加载')}</div>${row.parse_status === 'unparsed_media' ? '<span class="tag pending">媒体未解析</span>' : ''}</div><div class="actions"><button class="btn-secondary evidence-button" data-evidence-id="${esc(row.id)}" data-source-db="${esc(row.source_database || '')}" data-target="message-row-${esc(row.id)}">阅读证据</button></div></article>`); } $('messagesWrap').innerHTML = html.join(''); }
+      async function loadMessages(generation, append = false) { const request = ++state.messageRequest; if (state.messageAbort) state.messageAbort.abort(); state.messageAbort = new AbortController(); const params = messageParams(); if (append && state.messageCursor) params.set('cursor', state.messageCursor); params.set('limit','100'); params.set('include_text','0'); try { const data = await fetchJson('/api/wecom/messages?' + params, {signal:state.messageAbort.signal}); if (generation !== state.generation || request !== state.messageRequest) return; state.messages = append ? [...state.messages, ...(data.items || [])] : (data.items || []); renderMessageList(state.messages); $('messageCounts').textContent = `范围总数 ${data.range_total ?? 0} · 检索匹配 ${data.matched_total ?? data.total ?? 0} · 已加载 ${state.messages.length}；${data.range?.cloud_history_complete ? '云端历史已验证' : '不宣称云端完整历史'}`; state.messageCursor = data.next_cursor; $('btnMessageMore').hidden = !data.next_cursor; } catch (error) { if (error.name === 'AbortError' || generation !== state.generation || request !== state.messageRequest) return; $('messagesWrap').innerHTML = `<p class="empty">全量消息接口不可用：${esc(error.message)}</p>`; } }
+
+      function drawerRows(rows, targetId) { const sorted = [...rows].sort((a,b) => String(a.sent_at || '').localeCompare(String(b.sent_at || '')) || String(a.source_reference || '').localeCompare(String(b.source_reference || '')) || String(a.id || '').localeCompare(String(b.id || ''))); let lastDate = null; const html = []; for (const row of sorted) { const date = dateKey(row.sent_at); if (date !== lastDate) { html.push(`<div class="date-separator"><span>${esc(date)}</span></div>`); lastDate = date; } const provenance = row.provenance || {}; const isTarget = row.id === targetId; const quoted = provenance.quoted_text ? `<blockquote>引用：${esc(provenance.quoted_text)}</blockquote>` : ''; const forward = String(row.message_type || '').includes('转发') || String(row.parse_status || '').includes('forward') ? `<div class="forward-card">合并转发卡片 · ${esc(row.parse_status || '已保存结构路径')}<br><span class="subtle">可沿来源路径查看父级；不同会话正文不会混合。</span></div>` : ''; const source = {id:row.id, message_id:row.message_id, source_reference:row.source_reference, parse_status:row.parse_status, parent_id:row.parent_id, root_message_id:row.root_message_id, nesting_depth:row.nesting_depth, source_database:row.source_database, company_status:row.company_status, provenance}; html.push(`<article class="bubble${isTarget ? ' target' : ''}" id="drawer-message-${esc(row.id)}"><div class="bubble-top"><span class="bubble-author">${esc(row.sender_label || `${row.sender_name || '未知人员'} @公司未知`)}</span><span>${esc(formatTime(row.sent_at))}</span></div><div class="bubble-text">${esc(row.text || row.text_preview || '正文未解析')}</div>${quoted}${forward}<details class="source-details"><summary>来源详情</summary><pre>${esc(safeJson(source))}</pre></details></article>`); } return html.join(''); }
+      function openDrawer(title, data, trigger, targetId) { state.drawerTrigger = trigger || null; state.drawerPreviousFocus = document.activeElement; const drawer = $('evidenceDrawer'); drawer.classList.remove('expanded'); $('btnDrawerExpand').setAttribute('aria-pressed','false'); $('btnDrawerExpand').textContent = '放大阅读'; $('drawerTitle').textContent = title || '聊天证据'; const target = data.message || (data.messages || []).find(row => row.id === targetId) || (data.messages || [])[0]; const rows = data.messages || (target ? [target] : []); const ancestors = data.ancestors || []; const pathRows = [target, ...ancestors].filter(Boolean); const path = data.path || pathRows.map(row => row.id); const missing = data.gaps || (data.missing_ids || []).map(id => ({id, message:'父级消息未导入、未解析或当前范围不可访问'})); $('drawerBody').innerHTML = `<p class="path">来源路径：${path.map(id => `<span class="tag">${esc(String(id).slice(0, 18))}</span>`).join(' → ') || '当前消息'}${data.ancestors_count !== undefined ? ` · 父级 ${data.ancestors_count} 条` : ''}</p>${target ? `<section class="chat-block"><h3>目标消息</h3>${drawerRows([target], target.id)}</section>` : ''}${rows.filter(row => !target || row.id !== target.id).length ? `<section class="chat-block"><h3>关联消息／回复（引用不重复计数）</h3>${drawerRows(rows.filter(row => !target || row.id !== target.id), targetId)}</section>` : ''}${ancestors.length ? `<section class="chat-block"><h3>父级与转发祖先（单列）</h3>${drawerRows(ancestors, targetId)}</section>` : ''}${missing.length ? `<section class="chat-block"><h3>证据缺口</h3>${missing.map(item => `<div class="drawer-gap">${esc(item.message || '未加载父级')}：${esc(item.id || '')}</div>`).join('')}</section>` : ''}`; drawer.hidden = false; document.body.classList.add('drawer-open'); drawer.focus(); }
+      function closeDrawer() { state.drawerRequest += 1; const drawer = $('evidenceDrawer'); drawer.hidden = true; document.body.classList.remove('drawer-open'); const target = state.drawerTrigger; if (target && document.contains(target)) { target.focus(); const id = target.dataset.target || target.id; if (id) { const node = $(id); if (node) { node.scrollIntoView({block:'center'}); node.classList.add('highlight'); setTimeout(() => node.classList.remove('highlight'), 1800); } } } else if (state.drawerPreviousFocus && document.contains(state.drawerPreviousFocus)) state.drawerPreviousFocus.focus(); state.drawerTrigger = null; }
+      async function openEvidence(messageId, trigger, sourceDatabase = '') { if (!messageId) { setLoad('此记录没有可定位的原消息 ID。', 'error'); return; } const request = ++state.drawerRequest; const params = scopeParams(); if (sourceDatabase) params.set('source_database', sourceDatabase); try { const data = await fetchJson(`/api/wecom/messages/${encodeURIComponent(messageId)}/evidence?${params}`); if (request !== state.drawerRequest) return; openDrawer('聊天证据 · 全量消息', data, trigger, messageId); } catch (error) { if (request !== state.drawerRequest) return; setLoad(`证据读取失败：${error.message}`, 'error'); } }
+      async function openRound(messageId, trigger) { const request = ++state.drawerRequest; const params = scopeParams(); params.set('message_id', messageId); try { const data = await fetchJson('/api/wecom/report-detail?' + params); if (request !== state.drawerRequest) return; openDrawer('聊天证据 · 业务轮次', data, trigger, messageId); } catch (error) { if (request !== state.drawerRequest) return; setLoad(`轮次证据读取失败：${error.message}`, 'error'); } }
+      async function loadConversations() { try { const data = await fetchJson('/api/wecom/conversations'); $('convDatalist').innerHTML = (data.items || []).map(item => `<option value="${esc(item.conversation_name || item.conversation_id)}">${esc(item.conversation_name || item.conversation_id)} · ${item.message_count} 条</option>`).join(''); } catch (_) {} }
+      async function refreshAll() { state.generation += 1; const generation = state.generation; setLoad('正在读取当前范围…'); state.priceCursor = null; state.messageCursor = null; state.prices = []; state.messages = []; await Promise.all([loadReport(generation), loadPrices(generation), loadPendingCount(generation), loadCompanies(generation), loadMessages(generation)]); if (generation === state.generation) setLoad('当前范围已更新。', 'success'); }
+
+      function manualPayload() { const localTime = $('manualQuoteTime').value; const time = localTime ? new Date(localTime).toISOString() : ''; return {origin:$('manualOrigin').value.trim(), destination:$('manualDestination').value.trim(), weight:$('manualWeight').value.trim(), volume:$('manualVolume').value.trim(), package_count:$('manualPackages').value.trim(), package_type:$('manualPackageType').value.trim(), service_time:$('manualServiceTime').value.trim(), price:$('manualPrice').value.trim(), quote_company_name:$('manualCompany').value.trim(), currency:$('manualCurrency').value.trim(), pricing_method:$('manualMethod').value.trim(), quote_time:time, source_message_id:$('manualSourceMessage').value.trim(), source_scope:requireScope(), idempotency_key:`web-${crypto.randomUUID()}`}; }
+      async function submitManualPrice(event) { event.preventDefault(); $('manualPriceState').textContent = '正在保存候选…'; try { const result = await fetchJson('/api/wecom/price-candidates', {method:'POST', headers:headersForWrite(), body:JSON.stringify(manualPayload())}); $('manualPriceState').textContent = `已保存候选：${statusText(result.review_status)}，${result.applied ? '已采用' : '尚未改变现行价格'}。`; await loadPrices(state.generation); await loadPendingCount(state.generation); } catch (error) { $('manualPriceState').textContent = error.message; } }
+      function openReview(candidate) { state.reviewCandidate = candidate; $('reviewCandidateSummary').textContent = `${quoteSummary(candidate.payload)} · 当前状态 ${statusText(candidate.review_status)}；${candidate.status_reason || ''}`; $('reviewPrice').value = candidate.payload?.price_raw || ''; $('reviewReason').value = ''; $('reviewAction').value = 'approve'; $('reviewDialog').showModal(); }
+      async function submitReview(event) { event.preventDefault(); const candidate = state.reviewCandidate; if (!candidate) return; const action = $('reviewAction').value; const correction = action === 'correct_and_approve' ? {price:$('reviewPrice').value.trim()} : undefined; try { const result = await fetchJson(`/api/wecom/price-candidates/${encodeURIComponent(candidate.candidate_id)}/review`, {method:'POST', headers:headersForWrite(), body:JSON.stringify({action, reason:$('reviewReason').value.trim(), correction, expected_version:candidate.base_version, account_id:candidate.source_scope?.account_id, source_database:candidate.source_scope?.source_database, conversation_id:candidate.source_scope?.conversation_id, idempotency_key:`review-${candidate.candidate_id}-${action}`})}); $('reviewDialog').close(); setLoad(`审核完成：${result.applied ? '已尝试更新现行价格' : '未替换现行价格'}。`, 'success'); await loadPrices(state.generation); await loadPendingCount(state.generation); } catch (error) { $('reviewCandidateSummary').textContent = error.message; } }
+      async function deactivatePrice(button) { if (!confirm('确认停用这条现行价格？不会回退历史价格。')) return; try { const item = await fetchJson(`/api/wecom/prices/${encodeURIComponent(button.dataset.recordId)}/deactivate`, {method:'POST', headers:headersForWrite(), body:JSON.stringify({account_id:$('accountInput').value.trim(), source_database:$('sourceDatabaseInput').value.trim(), conversation_id:$('conversationIdInput').value.trim(), base_version:Number(button.dataset.version), reason:'人工停用：请在页面操作记录中补充业务依据', idempotency_key:`deactivate-${button.dataset.recordId}-${button.dataset.version}`})}); setLoad(item.deactivated ? '价格已停用，证据仍保留。' : '价格未停用。', 'success'); await loadPrices(state.generation); } catch (error) { setLoad(`停用失败：${error.message}`, 'error'); } }
+
+      function splitIds(value) { return value.split(',').map(item => item.trim()).filter(Boolean); }
+      function correctionPayload(mode) { return {mode, account_id:$('accountInput').value.trim(), source_database:$('sourceDatabaseInput').value.trim(), conversation_id:$('conversationIdInput').value.trim() || null, message_ids:splitIds($('correctionMessageIds').value), sender_ids:splitIds($('correctionSenderIds').value), normalized_company_id:$('correctionCompanyId').value.trim(), normalized_company_name:$('correctionCompanyName').value.trim(), alias:$('correctionAlias').value.trim() || null, basis:$('correctionBasis').value.trim()}; }
+      async function previewCorrection() { try { const result = await fetchJson('/api/wecom/company-corrections', {method:'POST', headers:headersForWrite(), body:JSON.stringify(correctionPayload('preview'))}); state.correctionPreview = result; $('correctionPreview').hidden = false; $('correctionPreview').innerHTML = `受影响消息 <b>${result.affected_count}</b> 条；可能合并的现行价格 <b>${result.conflicting_record_ids?.length || 0}</b> 条；${result.would_require_review ? '<span class="status wait">提交后进入待复核</span>' : '<span class="status ok">可写入显示覆盖层</span>'}`; $('btnCorrectionSubmit').disabled = !result.affected_count; } catch (error) { $('correctionPreview').hidden = false; $('correctionPreview').textContent = error.message; $('btnCorrectionSubmit').disabled = true; } }
+      async function submitCorrection() { if (!state.correctionPreview) return; try { const result = await fetchJson('/api/wecom/company-corrections', {method:'POST', headers:headersForWrite(), body:JSON.stringify(correctionPayload('submit'))}); $('correctionPreview').textContent = `纠正已记录：${result.status === 'applied' ? '显示覆盖已生效' : '因价格键冲突进入待复核'}；原始身份保持不变。`; $('btnCorrectionSubmit').disabled = true; await loadCompanies(state.generation); } catch (error) { $('correctionPreview').textContent = error.message; } }
+
+      async function previewImport() { const file = $('priceFile').files[0]; if (!file) { $('importPreview').hidden = false; $('importPreview').textContent = '请选择 .xlsx 文件。'; return; } try { const scope = requireScope(); const form = new FormData(); form.append('file', file); form.append('source_scope', JSON.stringify(scope)); form.append('request_id', `preview-${file.size}-${file.lastModified}`); const requestHeaders = headersForWrite(); delete requestHeaders['Content-Type']; const result = await fetchJson('/api/wecom/prices-import/preview', {method:'POST', headers:requestHeaders, body:form}); state.pendingPreview = result; $('importPreview').hidden = false; $('importPreview').innerHTML = `<p>新增 ${result.summary.new} · 修改 ${result.summary.modified} · 不变 ${result.summary.unchanged} · 错误 ${result.summary.errors} · 重复键 ${result.summary.duplicates}</p><div class="table-wrap"><table class="table-tight"><thead><tr><th>选</th><th>行</th><th>动作</th><th>新值摘要</th><th>原因</th></tr></thead><tbody>${(result.rows || []).map(row => `<tr><td><input type="checkbox" class="import-row" value="${row.row_number}" ${row.errors?.length ? 'disabled' : 'checked'}></td><td>${row.row_number}</td><td>${esc(row.action)}</td><td>${esc(quoteSummary(row.new))}</td><td>${esc((row.errors || []).map(error => error.message).join('；') || '可进入候选审核')}</td></tr>`).join('')}</tbody></table></div>`; $('btnConfirmImport').disabled = !(result.rows || []).some(row => !row.errors?.length); } catch (error) { $('importPreview').hidden = false; $('importPreview').textContent = error.message; $('btnConfirmImport').disabled = true; } }
+      async function confirmImport() { if (!state.pendingPreview) return; const selected_rows = [...document.querySelectorAll('.import-row:checked')].map(node => Number(node.value)); try { const result = await fetchJson('/api/wecom/prices-import/confirm', {method:'POST', headers:headersForWrite(), body:JSON.stringify({preview_id:state.pendingPreview.preview_id, selected_rows, account_id:$('accountInput').value.trim(), idempotency_key:`confirm-${state.pendingPreview.preview_id}`})}); $('importPreview').insertAdjacentHTML('afterbegin', `<p class="status ok">已进入统一候选审核：${result.results?.length || 0} 行；人工改动不会伪装为聊天自动采用。</p>`); $('btnConfirmImport').disabled = true; await loadPrices(state.generation); await loadPendingCount(state.generation); } catch (error) { $('importPreview').insertAdjacentHTML('afterbegin', `<p class="status bad">${esc(error.message)}</p>`); } }
+
+      renderPrices = renderPricesV2; openReview = openReviewV2; submitReview = submitReviewV2; correctionPayload = correctionPayloadV2;
+      function roleInfo(row) { const role = row.business_role === 'zhongji' || row.business_role === 'supplier' ? row.business_role : 'unknown'; return {role, label: row.role_label || (role === 'zhongji' ? '中技方' : role === 'supplier' ? '供应商' : '身份待确认')}; }
+      function chatAuthor(row) { const info = roleInfo(row), name = row.sender_name || row.sender_label || '未知人员', company = row.sender_corp_name || row.company_name || row.sender_company || '公司待确认'; return {info, text: name + ' · ' + company}; }
+      function chatBodyText(row, quote) {
+        let text = row.provenance?.unquoted_text || row.body || row.text || row.text_preview || (row.parse_status === 'unparsed_media' ? '附件或媒体尚未解析' : '正文暂未加载');
+        if (quote && !row.provenance?.unquoted_text && text.startsWith(String(quote))) {
+          const remainder = text.slice(String(quote).length);
+          if (!remainder || /^\r?\n/.test(remainder)) text = remainder.trimStart();
         }
-      } finally {
-        if (requestId === reportRequestSequence) {
-          reportController = null;
-          setLoading(false);
+        if (String(row.message_type || '').includes('转发') || String(row.parse_status || '').includes('forward')) {
+          text = text.replace(/^\[群聊的聊天记录\]\s*/,'');
+          if (!text) return '';
         }
+        return text || (quote ? '引用消息' : '正文暂未加载');
       }
-    }
-
-    document.getElementById('scopeSelect').addEventListener('change', e => {
-      document.getElementById('conversationIdInput').value = e.target.value;
-      document.getElementById('evidenceSearch').value = '';
-      loadData();
-    });
-    document.getElementById('evidenceSearch').addEventListener('input', () => {
-      clearTimeout(evidenceSearchTimer);
-      evidenceSearchTimer = setTimeout(applyEvidenceFilter, 200);
-    });
-    document.addEventListener('click', event => {
-      const link = event.target.closest('a[href^="#"]');
-      if (!link) return;
-      const target = document.getElementById(link.getAttribute('href').slice(1));
-      if (target) { target.hidden = false; if ('open' in target) target.open = true; }
-    });
-    document.addEventListener('toggle', event => {
-      if (event.target.matches && event.target.matches('details.event') && event.target.open) loadEventDetail(event.target);
-    }, true);
-
-    function selectCategory(category) {
-      const select = document.getElementById('categorySelect');
-      if (select.value === category) return;
-      select.value = category;
-      loadData();
-    }
-
-    const categoryList = document.getElementById('categoryList');
-    categoryList.addEventListener('click', event => {
-      const item = event.target.closest('.cat-item');
-      if (!item || !event.currentTarget.contains(item)) return;
-      selectCategory(item.dataset.category);
-    });
-    categoryList.addEventListener('keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      const item = event.target.closest('.cat-item');
-      if (!item || !event.currentTarget.contains(item)) return;
-      event.preventDefault();
-      selectCategory(item.dataset.category);
-    });
-    document.getElementById('clearCategory').addEventListener('click', () => selectCategory(''));
-
-    async function loadConversations() {
-      try {
-        const res = await fetch('/api/wecom/conversations').then(r => r.ok ? r.json() : {items:[]});
-        const dl = document.getElementById('convDatalist');
-        if (dl && res.items && res.items.length) {
-          dl.innerHTML = res.items.map(c => `
-            <option value="${esc(c.conversation_name || c.conversation_id)}">${esc(c.conversation_name || c.conversation_id)} (${c.message_count}条消息)</option>
-          `).join('');
-        }
-      } catch (_) {}
-    }
-
-    document.querySelector('#btnRefresh').addEventListener('click', loadData);
-    document.querySelector('#subjectSelect').addEventListener('change', loadData);
-    document.querySelector('#categorySelect').addEventListener('change', loadData);
-    document.querySelector('#statusSelect').addEventListener('change', loadData);
-    for (const id of ['accountInput', 'conversationInput', 'conversationIdInput']) {
-      document.getElementById(id).addEventListener('change', loadData);
-      document.getElementById(id).addEventListener('input', e => { if (!e.target.value) loadData(); });
-    }
-    document.querySelector('#btnExportCsv').addEventListener('click', () => {
-      window.open('/api/wecom/report-export?format=csv&' + filterParams());
-    });
-    document.querySelector('#btnExportJson').addEventListener('click', () => {
-      window.open('/api/wecom/report-export?format=json&' + filterParams());
-    });
-
-    loadConversations();
-    loadData();
+      function drawerRowsV2(rows, targetId) {
+        const sorted = [...(rows || [])].sort((a,b) => String(a.sent_at || '').localeCompare(String(b.sent_at || ''))); let lastDate = null;
+        return sorted.map(row => {
+          const rowKey = row.id || row.message_id, date = dateKey(row.sent_at), author = chatAuthor(row), target = String(rowKey) === String(targetId), separator = date !== lastDate ? '<div class="date-separator"><span>' + esc(date) + '</span></div>' : ''; lastDate = date;
+          const quote = row.provenance?.quoted_text || row.quoted_text || row.reply_text;
+          const quoteLink = row.reply_to_message_id ? '<button class="btn-secondary quote-jump" data-jump-id="' + esc(row.reply_to_message_id) + '">定位原消息</button>' : '';
+          const isForward = row.forwarded_count || String(row.message_type || '').includes('转发') || String(row.parse_status || '').includes('forward');
+          const forward = isForward ? '<div class="forward-card"><b>合并转发聊天记录</b> <button class="btn-secondary forward-open" data-forward-id="' + esc(row.id) + '">查看聊天记录</button><div class="forwarded-content" hidden></div></div>' : '';
+          const text = chatBodyText(row, quote);
+          return separator + '<article class="bubble role-' + author.info.role + (target ? ' target' : '') + '" id="drawer-message-' + esc(rowKey) + '"><div class="bubble-top"><span class="bubble-author">' + esc(author.text) + '<span class="bubble-role">' + esc(author.info.label) + '</span></span><span>' + esc(chatTime(row.sent_at)) + '</span></div><div class="bubble-text">' + esc(text) + '</div>' + (quote ? '<blockquote>' + esc(quote) + ' ' + quoteLink + '</blockquote>' : '') + forward + '</article>';
+        }).join('');
+      }
+      function openDrawerV2(title, data, trigger, targetId) {
+        const drawer = $('evidenceDrawer'), target = data.message || (data.messages || []).find(row => String(row.id || row.message_id) === String(targetId)) || (data.messages || [])[0];
+        const messageId = target?.id || target?.message_id || targetId, sameConversation = !drawer.hidden && state.drawerEvidence;
+        if (!sameConversation) { state.drawerTrigger = trigger || null; state.drawerPreviousFocus = document.activeElement; state.pageScrollX = window.scrollX; state.pageScrollY = window.scrollY; }
+        state.drawerEvidence = {messageId, data, scope: {...currentScopeObject(), source_database: data.source_scope?.source_database || currentScopeObject().source_database}}; state.drawerContextLimit = Number(data.context_limit || 20);
+        $('drawerTitle').textContent = title || '聊天窗口'; $('drawerConversation').textContent = data.conversation_name || target?.conversation_name || '企业微信群聊 · 只读';
+        const rows = data.messages || (target ? [target] : []), rowKeys = new Set(rows.map(row => String(row.id || row.message_id))), ancestors = (data.ancestors || []).filter(row => !rowKeys.has(String(row.id || row.message_id)));
+        $('drawerBody').innerHTML = target || rows.length ? '<div class="role-legend"><span class="tag">中技方：右侧浅绿色</span><span class="tag">供应商：左侧白色</span><span class="tag">身份待确认：中性</span></div>' + drawerRowsV2(rows, target?.id || targetId) + (ancestors.length ? '<div class="subtle">相关上文</div>' + drawerRowsV2(ancestors, targetId) : '') + (data.gaps?.length ? '<div class="drawer-gap">部分相邻内容未解析，未补造消息。</div>' : '') : '<p class="empty">没有可显示的聊天内容。</p>';
+        $('btnDrawerContext').hidden = !(data.has_more_before || data.has_more_after); drawer.hidden = false; document.body.classList.add('drawer-open'); drawer.focus();
+        requestAnimationFrame(() => { const node = target && $('drawer-message-' + (target.id || target.message_id)); if (node) node.scrollIntoView({block:'center', behavior:'smooth'}); });
+      }
+      function closeDrawerV2() { state.drawerRequest += 1; const drawer = $('evidenceDrawer'); drawer.hidden = true; document.body.classList.remove('drawer-open'); const target = state.drawerTrigger; if (target && document.contains(target)) target.focus({preventScroll:true}); else if (state.drawerPreviousFocus && document.contains(state.drawerPreviousFocus)) state.drawerPreviousFocus.focus({preventScroll:true}); window.scrollTo(state.pageScrollX, state.pageScrollY); state.drawerTrigger = null; }
+      async function openEvidenceV2(messageId, trigger, sourceDatabase = '') { if (!messageId) { setLoad('此报价尚无可定位的聊天消息。', 'error'); return; } const request = ++state.drawerRequest, params = scopeParams(); params.set('context_limit','20'); if (sourceDatabase) params.set('source_database', sourceDatabase); try { const data = await fetchJson('/api/wecom/messages/' + encodeURIComponent(messageId) + '/evidence?' + params); if (request === state.drawerRequest) openDrawerV2('聊天窗口 · 证据定位', data, trigger, messageId); } catch (error) { if (request === state.drawerRequest) setLoad('聊天窗口读取失败：' + error.message, 'error'); } }
+      async function loadMoreChatContext() { const evidence = state.drawerEvidence; if (!evidence?.messageId) return; const params = new URLSearchParams(evidence.scope || {}); state.drawerContextLimit = Math.min(200, state.drawerContextLimit + 20); params.set('context_limit', String(state.drawerContextLimit)); try { const data = await fetchJson('/api/wecom/messages/' + encodeURIComponent(evidence.messageId) + '/evidence?' + params); state.drawerEvidence.data = data; openDrawerV2('聊天窗口 · 证据定位', data, state.drawerTrigger, evidence.messageId); } catch (error) { setLoad('相邻消息加载失败：' + error.message, 'error'); } }
+      openDrawer = openDrawerV2; closeDrawer = closeDrawerV2; openEvidence = openEvidenceV2; openRound = openEvidenceV2;
+      $('btnRefresh').addEventListener('click', refreshAll); $('btnPriceRefresh').addEventListener('click', () => { state.priceCursor = null; state.prices = []; loadPrices(state.generation); }); $('priceView').addEventListener('change', () => { state.priceCursor = null; state.prices = []; loadPrices(state.generation); }); $('btnPriceMore').addEventListener('click', () => loadPrices(state.generation, true)); $('btnMessageSearch').addEventListener('click', () => { state.messageCursor = null; state.messages = []; loadMessages(state.generation); }); $('btnMessageMore').addEventListener('click', () => loadMessages(state.generation, true)); $('manualPriceForm').addEventListener('submit', submitManualPrice); $('reviewForm').addEventListener('submit', submitReview); $('btnReviewCancel').addEventListener('click', () => $('reviewDialog').close()); $('btnCorrectionPreview').addEventListener('click', previewCorrection); $('btnCorrectionSubmit').addEventListener('click', submitCorrection); $('btnPreviewImport').addEventListener('click', previewImport); $('btnConfirmImport').addEventListener('click', confirmImport);
+      $('btnPriceExport').addEventListener('click', () => { const params = priceParams(); window.open('/api/wecom/prices-export?' + params, '_blank', 'noopener'); }); $('btnPriceTemplate').addEventListener('click', () => { const params = scopeParams(); params.set('template','1'); window.open('/api/wecom/prices-export?' + params, '_blank', 'noopener'); }); $('btnExportCsv').addEventListener('click', () => window.open('/api/wecom/report-export?format=csv&' + scopeParams(), '_blank', 'noopener')); $('btnExportJson').addEventListener('click', () => window.open('/api/wecom/report-export?format=json&' + scopeParams(), '_blank', 'noopener'));
+      for (const id of ['accountInput','sourceDatabaseInput','conversationInput','conversationIdInput','subjectSelect','categorySelect','statusSelect']) $(id).addEventListener('change', refreshAll);
+      document.addEventListener('click', event => { const evidence = event.target.closest('.evidence-button'); if (evidence) { const id = evidence.dataset.evidenceId; if (evidence.closest('#roundsPanel')) openRound(id, evidence); else openEvidence(id, evidence, evidence.dataset.sourceDb || ''); } const review = event.target.closest('.review-button'); if (review) { const candidate = (window.__pendingCandidates || []).find(item => item.candidate_id === review.dataset.candidateId); if (candidate) openReview(candidate); } const deactivate = event.target.closest('.deactivate-button'); if (deactivate) deactivatePrice(deactivate); });
+      document.addEventListener('click', event => {
+        const detail = event.target.closest('.price-detail-button'); if (detail) openPriceDetail(detail);
+        const exportButton = event.target.closest('.price-export-button'); if (exportButton) exportPrice(exportButton);
+        const jump = event.target.closest('.quote-jump'); if (jump) { const node = $('drawer-message-' + jump.dataset.jumpId); if (node) { node.scrollIntoView({block:'center', behavior:'smooth'}); node.classList.add('target'); setTimeout(() => node.classList.remove('target'), 1800); } else openEvidenceV2(jump.dataset.jumpId, state.drawerTrigger); }
+        const forward = event.target.closest('.forward-open'); if (forward) openForwardedCard(forward);
+      });
+      async function openForwardedCard(button) {
+        const evidence = state.drawerEvidence, params = scopeParams(); if (!evidence?.messageId) return; params.set('scope','1');
+        const box = button.parentElement.querySelector('.forwarded-content'); if (button.dataset.open === '1') { box.hidden = true; button.textContent = '查看聊天记录'; button.dataset.open = '0'; return; }
+        try { const data = await fetchJson('/api/wecom/messages/' + encodeURIComponent(button.dataset.forwardId) + '/forwarded?' + params); box.hidden = false; box.innerHTML = drawerRowsV2(data.messages || [], ''); button.textContent = '收起聊天记录'; button.dataset.open = '1'; } catch (error) { setLoad('转发记录读取失败：' + error.message, 'error'); }
+      }
+      $('btnDrawerClose').addEventListener('click', closeDrawer); $('btnDrawerContext').addEventListener('click', loadMoreChatContext); $('btnPriceDetailClose').addEventListener('click', () => $('priceDetailDialog').close()); $('btnDrawerExpand').addEventListener('click', () => { const drawer = $('evidenceDrawer'); const expanded = drawer.classList.toggle('expanded'); $('btnDrawerExpand').textContent = expanded ? '恢复宽度' : '放大阅读'; $('btnDrawerExpand').setAttribute('aria-pressed', String(expanded)); }); document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('reviewDialog').open && !$('priceDetailDialog').open && !$('evidenceDrawer').hidden) { event.preventDefault(); closeDrawer(); } });
+      document.addEventListener('keydown', event => {
+        if ($('evidenceDrawer').hidden || event.key !== 'Tab') return;
+        const focusables = [...$('evidenceDrawer').querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(node => !node.hidden && node.offsetParent !== null);
+        if (!focusables.length) return;
+        const first = focusables[0], last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      });
+      function initScopeFromUrl() { const query = new URLSearchParams(window.location.search); for (const [key, id] of Object.entries({account_id:'accountInput', source_database:'sourceDatabaseInput', conversation_id:'conversationIdInput', conversation_name:'conversationInput'})) { const value = query.get(key); if (value !== null) $(id).value = value; } }
+      initScopeFromUrl(); loadConfig().then(loadConversations).then(refreshAll);
+    })();
   </script>
 </body>
 </html>

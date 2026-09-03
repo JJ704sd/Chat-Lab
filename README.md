@@ -206,6 +206,33 @@ uv run chatlog-assistant wecom-local import-jsonl samples/wecom_cosplay_demo.jso
 uv run chatlog-assistant wecom-local serve --analysis-db data/wecom-cosplay-demo/analysis.db --port 8770
 ```
 
+## 当前企微页面功能与交付状态
+
+页面主标题为“企微信息分析助手”，当前业务方向为“揽收车队群聊分析”。业务线不是群名；页面继续使用导入记录的真实群名。
+
+- **查询和分析**：按账号、来源库、群聊、公司、业务类别及状态查询；独立检索已导入消息，查看业务轮次、相关回复和报告统计。
+- **聊天证据**：价格行、业务轮次和消息列表统一打开只读聊天窗口；中技方在右侧浅绿气泡，已确认供应商在左侧白色气泡，未知身份采用中性样式。支持引用定位、转发展开／收起、相邻上下文加载、Esc 关闭和焦点恢复，不显示技术来源详情。
+- **旧数据兼容**：旧消息的公司状态仍为默认未知时，仅在原作者公司信息与已保存的中技分类一致、无冲突时恢复中技身份；不改写消息，不从正文 @ 提及推断身份，也不自动将其他公司认定为供应商。
+- **价格与 Excel**：已实现七字段价格明细、待完善／待审核／有效状态、候选审核、人工维护、单条展示文件、整表导出及模板预览导入。单条展示文件不是可回传维护模板。
+- **完成边界**：聊天窗口及旧数据兼容已做真实页面交互验证。价格与 Excel 已有合成数据和接口测试，尚未完成真实群聊价格回填及全流程业务验收；空运专用分析仍为后续工作。
+
+使用已有分析库启动当前页面（不要填企微原始数据库）：
+
+```powershell
+uv run chatlog-assistant wecom-local serve --analysis-db data/wecom-local/analysis.db --host 127.0.0.1 --port 8880
+```
+
+打开 `http://127.0.0.1:8880/wecom` 后选择实际账号和群聊。服务启动时加载 Python 和 HTML，更新代码后需重启对应服务，再刷新浏览器；不需要为了换 UI 重新导入或重建分析。
+
+用独立临时数据库复现合成验收：
+
+```powershell
+uv run python scripts/verify_wecom_pickup.py --verify
+uv run python scripts/verify_wecom_pickup.py --serve --port 8879
+```
+
+`--verify` 会生成合成 Excel 样例，`--serve` 保持临时验收服务运行。输出位于被 Git 忽略的 `outputs/`，不会触及真实数据库。详见 [操作说明](docs/wecom-pricing-operations.md) 和 [本期验收与限制](docs/wecom-pickup-acceptance.md)。
+
 ## 隐私边界与安全规范
 
 - 服务默认仅允许本机 `127.0.0.1` 访问。
