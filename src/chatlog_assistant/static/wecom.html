@@ -76,7 +76,7 @@
       color: var(--ink);
       font-size: 13px;
     }
-    select:focus, input:focus { outline: none; border-color: var(--brand); }
+    select:focus, input:focus, button:focus { outline: 3px solid rgba(37,99,235,0.25); outline-offset: 1px; border-color: var(--brand); }
     .btn-group { display: flex; gap: 8px; grid-column: 1 / -1; }
     button.btn-primary {
       cursor: pointer;
@@ -98,7 +98,7 @@
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 14px;
       margin-bottom: 20px;
     }
@@ -115,6 +115,7 @@
       display: grid;
       grid-template-columns: 280px 1fr;
       gap: 18px;
+      align-items: start;
     }
     .panel {
       background: var(--card-bg);
@@ -134,13 +135,21 @@
     .cat-item {
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      width: 100%;
       padding: 9px 6px;
+      height: auto;
       border-bottom: 1px solid #f1f5f9;
+      border-top: 0;
+      border-left: 0;
+      border-right: 0;
       font-size: 13px;
       cursor: pointer;
+      text-align: left;
     }
     .cat-item:hover { background: #f8fafc; }
-    .cat-item.active { font-weight: 700; color: var(--brand); }
+    .cat-item.active, .cat-item[aria-pressed="true"] { font-weight: 700; color: var(--brand); background: var(--brand-soft); }
+    .cat-item:focus-visible { outline: 3px solid rgba(37,99,235,0.3); outline-offset: -2px; }
 
     .table-wrap { overflow-x: auto; max-height: 650px; }
     table { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 13px; }
@@ -185,6 +194,12 @@
     .empty { padding: 48px; text-align: center; color: var(--muted); }
     small { color: var(--muted); font-size: 11px; }
     #coverage { padding: 12px 16px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; }
+    #loadState { min-height: 24px; margin: 8px 0 12px; color: var(--muted); }
+    #loadState.error { color: var(--danger); }
+    #loadState.success { color: var(--ok); }
+    .category-meta, .evidence-note { color: var(--muted); font-size: 12px; margin: -6px 0 12px; }
+    .clear-category { height: 30px; padding: 0 9px; font-size: 12px; }
+    .event-detail { margin-top: 10px; }
     .report-panel { margin-bottom: 18px; }
     .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
     details { margin: 8px 0; }
@@ -195,6 +210,13 @@
     @media (max-width: 1024px) {
       .cards { grid-template-columns: repeat(2, 1fr); }
       .grid-2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      header { padding: 20px 18px; }
+      main { padding: 14px; }
+      .cards { grid-template-columns: 1fr; }
+      .btn-group { flex-wrap: wrap; }
+      .btn-group button { flex: 1 1 180px; }
     }
   </style>
 </head>
@@ -253,9 +275,10 @@
 
     <div class="toolbar"><div class="field"><label for="scopeSelect">记录范围</label><select id="scopeSelect"><option value="">主群及全部转发</option></select></div><div class="field"><label for="evidenceSearch">证据内检索（时间、人员、正文）</label><input id="evidenceSearch" placeholder="例如 21:01:23、氢氧化钾、通州"></div></div>
     <p id="coverage" role="status"></p>
+    <p id="loadState" role="status" aria-live="polite"></p>
     <section class="cards">
       <article class="card">
-        <span>物流提问数（按消息去重）</span>
+        <span>当前业务轮次（按消息去重）</span>
         <strong id="statTotal">0</strong>
       </article>
       <article class="card">
@@ -271,7 +294,11 @@
         <strong id="statUnreplied" style="color: var(--danger)">0</strong>
       </article>
       <article class="card">
-        <span>范围内消息总数</span>
+        <span>当前筛选相关消息数</span>
+        <strong id="statFilteredMessages">0</strong>
+      </article>
+      <article class="card">
+        <span>当前会话全量消息数</span>
         <strong id="statCatCount">0</strong>
       </article>
       <article class="card"><span>跟进中（待补充或确认）</span><strong id="statProgress">0</strong></article>
@@ -288,18 +315,20 @@
       <div class="table-wrap" id="routesWrap" style="max-height:460px;overflow:auto"></div>
     </section>
     <section class="panel report-panel">
-      <h2>业务轮次与完整回复证据（时间升序）</h2>
-      <p><small>已有方案表示获得报价或处置结论，不代表运输完成。追问独立计数；缺失字段保持未知。</small></p>
+      <h2>业务轮次与按需加载的完整回复证据（时间升序）</h2>
+      <p><small>已有方案表示获得报价或处置结论，不代表运输完成。追问独立计数；缺失字段保持未知。展开轮次后加载正文、回复和父级证据。</small></p>
       <div id="eventsWrap"></div>
     </section>
     <section class="panel report-panel">
-      <h2>全量已导入消息与父子证据链</h2>
+      <h2>已加载消息与父子证据链</h2>
+      <p id="messagesState" class="evidence-note">页面按轮次按需读取相关证据；“导出完整证据 JSON”仍返回当前筛选范围的全量消息。</p>
       <div id="messagesWrap"></div>
     </section>
 
     <section class="grid-2">
       <aside class="panel">
-        <h2>类别分布统计</h2>
+        <h2><span id="categoryTitle">类别分布（当前筛选范围；一轮可包含多个类别）</span><button id="clearCategory" class="btn-secondary clear-category" type="button">清除类别</button></h2>
+        <p id="categoryMeta" class="category-meta">统计口径：多标签，共现类别会重复计入。</p>
         <div id="categoryList"></div>
       </aside>
       <article class="panel">
@@ -338,70 +367,266 @@
     }
 
     let currentReport = null;
-    const knownCategories = new Set();
-    function renderReport(report) {
-      currentReport = report;
-      const c = report.coverage, m = report.metrics;
-      for (const [id,key] of Object.entries({statTotal:'question_count',statSolved:'solved_count',statAck:'ack_only_count',statUnreplied:'unreplied_count',statProgress:'in_progress_count'})) document.getElementById(id).textContent=m[key];
-      document.getElementById('statCatCount').textContent=c.message_count;
-      document.getElementById('coverage').textContent = `${c.database_backed_count===c.message_count && c.message_count ? '本地数据库来源已核验。' : '含来源未核验材料。'}当前 ${c.message_count} 条，${formatTime(c.first_message_at)} 至 ${formatTime(c.last_message_at)}；嵌套 ${c.nested_message_count} 条，最大深度 ${c.max_nesting_depth}；未完整展开转发 ${c.unexpanded_forward_count} 条，未解析媒体 ${c.unparsed_media_count} 条。同名未核验材料排除 ${c.excluded_unverified_source_count} 条。${c.note}`;
-      const stat = (label,s) => `${label}：均值 ${s.mean_seconds ?? '—'} 秒，中位数 ${s.median_seconds ?? '—'} 秒，样本 ${s.sample_count}`;
-      document.getElementById('latencySummary').textContent = [stat('首次确认',m.ack_latency),stat('首次有效回复',m.first_response_latency),stat('首次方案',m.solution_latency),stat('最终方案',m.final_solution_latency)].join('；');
-      const max=Math.max(1,...report.events.flatMap(e=>[e.ack_seconds||0,e.final_solution_seconds||0]));
-      document.getElementById('latencyChart').innerHTML=report.events.map(e=>`<div style="margin:8px 0" aria-label="轮次${e.round}，确认${e.ack_seconds ?? '未知'}秒，最终方案${e.final_solution_seconds ?? '未知'}秒"><small>轮次 ${e.round} ${esc(formatTime(e.sent_at))}</small><br>确认 ${e.ack_seconds ?? '—'} 秒 <span class="latency-bar latency-ack" style="width:${(e.ack_seconds||0)/max*45}%"></span><br>方案 ${e.final_solution_seconds ?? '—'} 秒 <span class="latency-bar" style="width:${(e.final_solution_seconds||0)/max*45}%"></span></div>`).join('');
-      const s=report.special_goods, t=report.shipment_constraints, a=report.association_quality;
-      const rate=n=>n==null?'—':(n*100).toFixed(1)+'%';
-      document.getElementById('specialGoodsSummary').textContent=`特殊货物 ${s.question_count} 笔；已给方案 ${s.handled_count}（${rate(s.handling_rate)}）；拒单 ${s.rejected_count}（${rate(s.rejection_rate)}）。特殊限制 ${t.question_count} 笔，处理率 ${rate(t.handling_rate)}。启发式确认关联 ${a.heuristic_ack_count} 次，待复核问题 ${a.questions_flagged_for_review} 笔。`;
-      document.getElementById('routesWrap').innerHTML=`<table><thead><tr><th>路线 / 区域</th><th>提问 / 已归属方案</th><th>报价与时效</th></tr></thead><tbody>${report.routes.map(r=>`<tr><td>${esc(r.origin||'未知')} → ${esc(r.destination||'未唯一确定')}<br><small>${esc(r.region)}</small></td><td>${r.question_count} / ${r.solved_count}</td><td>${r.quotes.map(q=>`<a href="#event-${q.round}">轮次 ${q.round}</a>：${esc(q.amount??'无金额')} · ${esc(q.currency??'币种未注明')} · ${esc(q.delivery_time??'时效未注明')}<br><small>${esc(q.association_basis)}</small>`).join('<br>')}</td></tr>`).join('')}</tbody></table>`;
-      const categories={};
-      for(const e of report.events) for(const key of Object.keys(e.category_statuses)){categories[key]=(categories[key]||0)+1;knownCategories.add(key);}
-      const selected=document.getElementById('categorySelect').value;
-      document.getElementById('categorySelect').innerHTML='<option value="">全部类别</option>'+[...knownCategories].map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-      document.getElementById('categorySelect').value=selected;
-      document.getElementById('categoryList').innerHTML=Object.entries(categories).map(([k,v])=>`<div class="cat-item"><span>${esc(k)}</span><b>${v}</b></div>`).join('');
-      document.getElementById('issuesWrap').innerHTML=`<table><thead><tr><th>轮次 / 时间 / 人员</th><th>类别</th><th>状态</th></tr></thead><tbody>${report.events.map(e=>`<tr><td><a href="#event-${e.round}">轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</a></td><td>${Object.keys(e.category_statuses).map(esc).join('、')}</td><td>${statusLabel(e.status)}</td></tr>`).join('')}</tbody></table>`;
-      if(!document.getElementById('conversationIdInput').value){
-        const groups={};
-        for(const row of report.messages) if(row.nesting_depth>0) groups[row.conversation_id]=(groups[row.conversation_id]||0)+1;
-        const options=Object.entries(groups).sort((a,b)=>b[1]-a[1]);
-        document.getElementById('scopeSelect').innerHTML='<option value="">主群及全部转发</option>'+options.map(([id,count],i)=>`<option value="${esc(id)}">${i===0?'重点转发':'其他转发'} · ${count} 条</option>`).join('');
-      }
-      renderEvidence();
-    }
-    function renderEvidence(){
-      const report=currentReport;
-      if(!report)return;
-      const term=document.getElementById('evidenceSearch').value.trim().toLowerCase();
-      const matches=row=>!term||[row.sent_at,row.sender_name,row.text,...(row.responses||[]).map(r=>r.text)].join(' ').toLowerCase().includes(term);
-      document.getElementById('eventsWrap').innerHTML=report.events.filter(matches).map(e=>`<details class="event" id="event-${e.round}"><summary><b>轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</b> <span class="tag tag-${esc(e.subject_bucket)}">${esc(e.subject_bucket)}</span> <span class="${statusClass(e.status)}">${statusLabel(e.status)}</span>${e.needs_review?' · 待复核':''}</summary><div class="message-text">${esc(e.text)}</div><p>起运 ${esc(e.clues.origin??'未知')} → ${esc(e.clues.destination??'未知')} · 首次确认 ${e.ack_seconds??'—'} 秒 · 首次方案 ${e.solution_seconds??'—'} 秒 · 最终方案 ${e.final_solution_seconds??'—'} 秒</p>${e.clues.followup_to_message_id?`<p>前一诉求：<a href="#message-${esc(e.clues.followup_to_message_id)}">查看证据</a>（${esc(e.clues.followup_basis)}）</p>`:''}<details><summary>全部规格、路线与类别状态</summary><pre class="message-text">${esc(JSON.stringify({entities:e.clues,routes:e.route_coverage,category_statuses:e.category_statuses},null,2))}</pre></details><p><a href="#message-${esc(e.message_id)}">原消息及父级证据</a></p>${e.responses.map(r=>`<details><summary>${esc(formatTime(r.sent_at))} · ${esc(r.sender_name)} · ${esc(r.kind)} · ${r.latency_seconds} 秒 · is_solution=${r.is_solution}</summary><div class="message-text">${esc(r.text)}</div><small>关联依据 ${esc(r.basis)} · <a href="#message-${esc(r.message_id)}">原始回复</a></small></details>`).join('')}</details>`).join('')||'<p>当前筛选无匹配的物流提问。</p>';
-      // Keep every source node in the DOM so parent links remain usable while searching.
-      document.getElementById('messagesWrap').innerHTML=[...report.messages,...(report.ancestors||[])].map(row=>`<details id="message-${esc(row.id)}" ${matches(row)?'':'hidden'}><summary>${esc(formatTime(row.sent_at))} · ${esc(row.sender_name)} · ${esc(row.subject_bucket)} · 层级 ${row.nesting_depth} · ${esc(row.parse_status)}</summary><div class="message-text">${esc(row.text)}</div><p><small>${row.provenance.message_id_basis==='native_payload_position'?'本地记录键（载荷未提供原消息 ID）':'原消息 ID'} ${esc(row.message_id)}<br>${esc(row.source_reference)}</small></p>${row.parent_id?`<a href="#message-${esc(row.parent_id)}">跳转父消息</a>`:'<small>主群消息</small>'}<details><summary>来源哈希、原始身份与引用</summary><pre class="message-text">${esc(JSON.stringify(row.provenance,null,2))}</pre></details></details>`).join('');
-    }
-    async function loadData(){
-      try{
-        document.getElementById('coverage').textContent='正在读取完整证据…';
-        const response=await fetch('/api/wecom/report?'+filterParams());
-        if(!response.ok)throw new Error('完整报告接口不可用');
-        renderReport(await response.json());
-      }catch(err){document.getElementById('coverage').textContent='数据加载异常：'+err.message;}
-    }
-    document.getElementById('scopeSelect').addEventListener('change',e=>{
-      document.getElementById('conversationIdInput').value=e.target.value;
-      document.getElementById('evidenceSearch').value='';
-      loadData();
-    });
-    document.getElementById('evidenceSearch').addEventListener('input',renderEvidence);
-    document.addEventListener('click',event=>{
-      const link=event.target.closest('a[href^="#"]');
-      if(!link)return;
-      const target=document.getElementById(link.getAttribute('href').slice(1));
-      if(target){target.hidden=false;target.open=true;}
-    });
+    let lastSuccessfulReport = null;
+    let reportController = null;
+    let reportRequestSequence = 0;
+    let reportGeneration = 0;
+    let evidenceSearchTimer = null;
+    const loadedDetails = new Map();
+    const eventSearchText = new Map();
+    const detailControllers = new Map();
 
-    function selectCategory(cat) {
-      document.querySelector('#categorySelect').value = cat;
+    function setLoadState(message, kind = '') {
+      const node = document.getElementById('loadState');
+      node.textContent = message;
+      node.className = kind;
+    }
+
+    function setLoading(loading) {
+      document.querySelector('main').setAttribute('aria-busy', String(loading));
+      document.getElementById('btnRefresh').disabled = loading;
+    }
+
+    function renderScopeOptions(report) {
+      const select = document.getElementById('scopeSelect');
+      if (document.getElementById('conversationIdInput').value) return;
+      let options = report.scope_options || [];
+      if (!options.length && report.messages) {
+        const groups = {};
+        for (const row of report.messages) if (row.nesting_depth > 0) groups[row.conversation_id] = (groups[row.conversation_id] || 0) + 1;
+        options = Object.entries(groups).map(([conversation_id, message_count]) => ({conversation_id, message_count}));
+      }
+      options = [...options].sort((a, b) => b.message_count - a.message_count || String(a.conversation_id).localeCompare(String(b.conversation_id)));
+      select.innerHTML = '<option value="">主群及全部转发</option>' + options.map((row, i) =>
+        `<option value="${esc(row.conversation_id)}">${i === 0 ? '重点转发' : '其他转发'} · ${row.message_count} 条</option>`).join('');
+    }
+
+    function categoryRows(report) {
+      if (Array.isArray(report.category_counts)) return report.category_counts;
+      const counts = {};
+      for (const event of report.events || []) for (const category of Object.keys(event.category_statuses || {})) counts[category] = (counts[category] || 0) + 1;
+      return Object.entries(counts).map(([category, count]) => ({category, count}));
+    }
+
+    function renderCategories(report) {
+      const select = document.getElementById('categorySelect');
+      const selected = select.value;
+      const counts = categoryRows(report).sort((a, b) => b.count - a.count || String(a.category).localeCompare(String(b.category)));
+      const available = [...new Set(report.available_categories || counts.map(row => row.category))].sort((a, b) => String(a).localeCompare(String(b)));
+      if (selected && !available.includes(selected)) {
+        select.value = '';
+        setLoadState(`当前范围不再包含“${selected}”，已清除类别筛选并重新加载。`, 'success');
+        loadData();
+        return false;
+      }
+      select.innerHTML = '<option value="">全部类别</option>' + available.map(category =>
+        `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+      select.value = selected;
+      const title = document.getElementById('categoryTitle');
+      const meta = document.getElementById('categoryMeta');
+      if (selected) {
+        title.textContent = '类别分布（当前筛选范围；一轮可包含多个类别） · 当前筛选内的共现类别';
+        meta.textContent = `选中“${selected}”后，${report.metrics.question_count} 表示筛选出的 ${report.metrics.question_count} 个业务轮次；其他类别数量表示其中同时带有该标签的轮次数，不表示独立问题。统计口径：多标签，共现类别会重复计入。`;
+      } else {
+        title.textContent = '类别分布（当前筛选范围；一轮可包含多个类别）';
+        meta.textContent = `当前业务轮次：${report.metrics.question_count}；统计口径：多标签，共现类别会重复计入。`;
+      }
+      document.getElementById('clearCategory').disabled = !selected;
+      const list = document.getElementById('categoryList');
+      list.innerHTML = counts.length ? counts.map(row => {
+        const active = row.category === selected;
+        return `<button type="button" class="cat-item${active ? ' active' : ''}" data-category="${esc(row.category)}" aria-label="${esc(row.category)}，${row.count} 个业务轮次" aria-pressed="${String(active)}"><span>${esc(row.category)}</span><b>${row.count}</b></button>`;
+      }).join('') : '<p class="empty">当前筛选无业务轮次或类别。</p>';
+      return true;
+    }
+
+    function renderReport(report) {
+      if (!renderCategories(report)) return false;
+      currentReport = report;
+      reportGeneration += 1;
+      for (const controller of detailControllers.values()) controller.abort();
+      detailControllers.clear();
+      loadedDetails.clear();
+      eventSearchText.clear();
+      const c = report.coverage || {}, m = report.metrics || {};
+      for (const [id, key] of Object.entries({statTotal:'question_count',statSolved:'solved_count',statAck:'ack_only_count',statUnreplied:'unreplied_count',statProgress:'in_progress_count'})) document.getElementById(id).textContent = m[key] ?? 0;
+      const filteredMessages = c.filtered_message_count ?? c.message_count ?? 0;
+      const conversationMessages = c.conversation_message_count ?? c.message_count ?? 0;
+      document.getElementById('statFilteredMessages').textContent = filteredMessages;
+      document.getElementById('statCatCount').textContent = conversationMessages;
+      document.getElementById('coverage').textContent = `${c.database_backed_count === conversationMessages && conversationMessages ? '本地数据库来源已核验。' : '含来源未核验材料。'}当前业务轮次 ${m.question_count ?? 0} 笔；当前筛选相关消息 ${filteredMessages} 条；当前会话全量消息 ${conversationMessages} 条；${formatTime(c.first_message_at)} 至 ${formatTime(c.last_message_at)}；嵌套 ${c.nested_message_count ?? 0} 条，最大深度 ${c.max_nesting_depth ?? 0}；未完整展开转发 ${c.unexpanded_forward_count ?? 0} 条，未解析媒体 ${c.unparsed_media_count ?? 0} 条。同名未核验材料排除 ${c.excluded_unverified_source_count ?? 0} 条。${c.note || ''}`;
+      const stat = (label, s = {}) => `${label}：均值 ${s.mean_seconds ?? '—'} 秒，中位数 ${s.median_seconds ?? '—'} 秒，样本 ${s.sample_count ?? 0}`;
+      document.getElementById('latencySummary').textContent = [stat('首次确认', m.ack_latency), stat('首次有效回复', m.first_response_latency), stat('首次方案', m.solution_latency), stat('最终方案', m.final_solution_latency)].join('；');
+      const events = report.events || [];
+      const max = Math.max(1, ...events.flatMap(e => [e.ack_seconds || 0, e.final_solution_seconds || 0]));
+      document.getElementById('latencyChart').innerHTML = events.length ? events.map(e => `<div style="margin:8px 0" aria-label="轮次${e.round}，确认${e.ack_seconds ?? '未知'}秒，最终方案${e.final_solution_seconds ?? '未知'}秒"><small>轮次 ${e.round} ${esc(formatTime(e.sent_at))}</small><br>确认 ${e.ack_seconds ?? '—'} 秒 <span class="latency-bar latency-ack" style="width:${(e.ack_seconds || 0) / max * 45}%"></span><br>方案 ${e.final_solution_seconds ?? '—'} 秒 <span class="latency-bar" style="width:${(e.final_solution_seconds || 0) / max * 45}%"></span></div>`).join('') : '<p class="empty">当前筛选暂无时延数据。</p>';
+      const s = report.special_goods || {}, t = report.shipment_constraints || {}, a = report.association_quality || {};
+      const rate = n => n == null ? '—' : (n * 100).toFixed(1) + '%';
+      document.getElementById('specialGoodsSummary').textContent = `特殊货物 ${s.question_count ?? 0} 笔；已给方案 ${s.handled_count ?? 0}（${rate(s.handling_rate)}）；拒单 ${s.rejected_count ?? 0}（${rate(s.rejection_rate)}）。特殊限制 ${t.question_count ?? 0} 笔，处理率 ${rate(t.handling_rate)}。启发式确认关联 ${a.heuristic_ack_count ?? 0} 次，待复核问题 ${a.questions_flagged_for_review ?? 0} 笔。`;
+      const routes = report.routes || [];
+      document.getElementById('routesWrap').innerHTML = routes.length ? `<table><thead><tr><th>路线 / 区域</th><th>提问 / 已归属方案</th><th>报价与时效</th></tr></thead><tbody>${routes.map(r => `<tr><td>${esc(r.origin || '未知')} → ${esc(r.destination || '未唯一确定')}<br><small>${esc(r.region)}</small></td><td>${r.question_count} / ${r.solved_count}</td><td>${(r.quotes || []).map(q => `<a href="#event-${q.round}">轮次 ${q.round}</a>：${esc(q.amount ?? '无金额')} · ${esc(q.currency ?? '币种未注明')} · ${esc(q.delivery_time ?? '时效未注明')}<br><small>${esc(q.association_basis)}</small>`).join('<br>')}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前筛选暂无路线或报价。</p>';
+      document.getElementById('issuesWrap').innerHTML = events.length ? `<table><thead><tr><th>轮次 / 时间 / 人员</th><th>类别</th><th>状态</th></tr></thead><tbody>${events.map(e => `<tr><td><a href="#event-${e.round}">轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</a></td><td>${Object.keys(e.category_statuses || {}).map(esc).join('、')}</td><td>${statusLabel(e.status)}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">当前筛选暂无业务轮次。</p>';
+      renderScopeOptions(report);
+      renderEventIndex(events);
+      renderMessages();
+      applyEvidenceFilter();
+      return true;
+    }
+
+    function renderEventIndex(events) {
+      const wrap = document.getElementById('eventsWrap');
+      const items = events.map(e => {
+        const search = [e.sent_at, e.sender_name, e.subject_bucket, e.status, e.text_preview, ...Object.keys(e.category_statuses || {})].join(' ');
+        eventSearchText.set(e.message_id, search);
+        return `<details class="event" id="event-${e.round}" data-message-id="${esc(e.message_id)}" data-search="${esc(search)}"><summary><b>轮次 ${e.round} · ${esc(formatTime(e.sent_at))} · ${esc(e.sender_name)}</b> <span class="tag tag-${esc(e.subject_bucket)}">${esc(e.subject_bucket)}</span> <span class="${statusClass(e.status)}">${statusLabel(e.status)}</span>${e.needs_review ? ' · 待复核' : ''}</summary><div class="event-detail"><p class="evidence-note">展开时读取当前轮次正文、相关回复、关联依据和父级证据。</p></div></details>`;
+      }).join('');
+      wrap.innerHTML = items + `<p id="eventsEmpty" class="empty" ${events.length ? 'hidden' : ''}>当前筛选无匹配的物流提问。</p>`;
+    }
+
+    function renderEventBody(event) {
+      const clues = event.clues || {};
+      const responses = event.responses || [];
+      return `<div class="message-text">${esc(event.text)}</div><p>起运 ${esc(clues.origin ?? '未知')} → ${esc(clues.destination ?? '未知')} · 首次确认 ${event.ack_seconds ?? '—'} 秒 · 首次方案 ${event.solution_seconds ?? '—'} 秒 · 最终方案 ${event.final_solution_seconds ?? '—'} 秒</p>${clues.followup_to_message_id ? `<p>前一诉求：<a href="#message-${esc(clues.followup_to_message_id)}">查看证据</a>（${esc(clues.followup_basis)}）</p>` : ''}<details><summary>全部规格、路线与类别状态</summary><pre class="message-text">${esc(JSON.stringify({entities: clues, routes: event.route_coverage, category_statuses: event.category_statuses}, null, 2))}</pre></details><p><a href="#message-${esc(event.message_id)}">原消息及父级证据</a></p>${responses.map(r => `<details><summary>${esc(formatTime(r.sent_at))} · ${esc(r.sender_name)} · ${esc(r.kind)} · ${r.latency_seconds} 秒 · is_solution=${r.is_solution}</summary><div class="message-text">${esc(r.text)}</div><small>关联依据 ${esc(r.basis)} · <a href="#message-${esc(r.message_id)}">原始回复</a></small></details>`).join('')}`;
+    }
+
+    function renderMessage(row) {
+      const provenance = row.provenance || {};
+      const search = [row.sent_at, row.sender_name, row.subject_bucket, row.parse_status, row.text].join(' ');
+      return `<details class="evidence-message" id="message-${esc(row.id)}" data-search="${esc(search)}"><summary>${esc(formatTime(row.sent_at))} · ${esc(row.sender_name)} · ${esc(row.subject_bucket)} · 层级 ${row.nesting_depth} · ${esc(row.parse_status)}</summary><div class="message-text">${esc(row.text)}</div><p><small>${provenance.message_id_basis === 'native_payload_position' ? '本地记录键（载荷未提供原消息 ID）' : '原消息 ID'} ${esc(row.message_id)}<br>${esc(row.source_reference)}</small></p>${row.parent_id ? `<a href="#message-${esc(row.parent_id)}">跳转父消息</a>` : '<small>主群消息</small>'}<details><summary>来源哈希、原始身份与引用</summary><pre class="message-text">${esc(JSON.stringify(provenance, null, 2))}</pre></details></details>`;
+    }
+
+    function renderMessages() {
+      const rows = new Map();
+      for (const detail of loadedDetails.values()) for (const row of [...(detail.messages || []), ...(detail.ancestors || [])]) rows.set(row.id, row);
+      const values = [...rows.values()].sort((a, b) => String(a.sent_at || '').localeCompare(String(b.sent_at || '')) || String(a.id).localeCompare(String(b.id)));
+      document.getElementById('messagesWrap').innerHTML = values.length ? values.map(renderMessage).join('') + '<p id="messagesEmpty" class="empty" hidden>当前检索无匹配消息。</p>' : '<p class="empty">展开业务轮次后，这里显示该轮次的原消息、回复和父级证据。</p>';
+    }
+
+    function applyEvidenceFilter() {
+      const term = document.getElementById('evidenceSearch').value.trim().toLowerCase();
+      const eventNodes = [...document.querySelectorAll('#eventsWrap .event')];
+      let visibleEvents = 0;
+      for (const node of eventNodes) {
+        const search = `${node.dataset.search || ''} ${eventSearchText.get(node.dataset.messageId) || ''}`.toLowerCase();
+        node.hidden = Boolean(term && !search.includes(term));
+        if (!node.hidden) visibleEvents += 1;
+      }
+      const emptyEvents = document.getElementById('eventsEmpty');
+      if (emptyEvents) emptyEvents.hidden = visibleEvents !== 0;
+      const messageNodes = [...document.querySelectorAll('#messagesWrap .evidence-message')];
+      let visibleMessages = 0;
+      for (const node of messageNodes) {
+        node.hidden = Boolean(term && !(node.dataset.search || node.textContent).toLowerCase().includes(term));
+        if (!node.hidden) visibleMessages += 1;
+      }
+      const emptyMessages = document.getElementById('messagesEmpty');
+      if (emptyMessages) emptyMessages.hidden = visibleMessages !== 0;
+    }
+
+    async function loadEventDetail(node) {
+      if (!currentReport || node.dataset.loaded === 'true') return;
+      const messageId = node.dataset.messageId;
+      const generation = reportGeneration;
+      const controller = new AbortController();
+      detailControllers.set(messageId, controller);
+      const container = node.querySelector('.event-detail');
+      container.innerHTML = '<p class="evidence-note">正在读取本轮完整证据…</p>';
+      try {
+        const params = filterParams();
+        params.set('message_id', messageId);
+        const response = await fetch('/api/wecom/report-detail?' + params, {signal: controller.signal});
+        if (!response.ok) throw new Error(response.status === 404 ? '当前筛选下找不到该业务轮次' : '详情接口不可用');
+        const detail = await response.json();
+        if (generation !== reportGeneration || !currentReport) return;
+        loadedDetails.set(messageId, detail);
+        eventSearchText.set(messageId, [node.dataset.search, detail.event.text, ...(detail.event.responses || []).map(r => r.text)].join(' '));
+        node.dataset.loaded = 'true';
+        container.innerHTML = renderEventBody(detail.event);
+        renderMessages();
+        applyEvidenceFilter();
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        container.innerHTML = `<p class="status-message error">本轮证据加载失败：${esc(error.message)}。重新展开可重试。</p>`;
+      } finally {
+        if (detailControllers.get(messageId) === controller) detailControllers.delete(messageId);
+      }
+    }
+
+    async function loadData() {
+      const requestId = ++reportRequestSequence;
+      if (reportController) reportController.abort();
+      for (const controller of detailControllers.values()) controller.abort();
+      detailControllers.clear();
+      const controller = new AbortController();
+      reportController = controller;
+      setLoading(true);
+      setLoadState('正在加载当前筛选结果…');
+      try {
+        const params = filterParams();
+        params.set('view', 'index');
+        const response = await fetch('/api/wecom/report?' + params, {signal: controller.signal});
+        if (!response.ok) throw new Error('报表接口不可用');
+        const report = await response.json();
+        if (requestId !== reportRequestSequence) return;
+        if (!renderReport(report)) return;
+        lastSuccessfulReport = report;
+        setLoadState('当前筛选结果已更新。', 'success');
+      } catch (error) {
+        if (error.name === 'AbortError' || requestId !== reportRequestSequence) return;
+        setLoadState(lastSuccessfulReport ? `数据加载失败：${error.message}；已保留上一次有效结果。` : `数据加载失败：${error.message}`, 'error');
+        if (!lastSuccessfulReport) {
+          document.getElementById('eventsWrap').innerHTML = '<p class="empty">暂时无法读取业务轮次。</p>';
+          document.getElementById('messagesWrap').innerHTML = '<p class="empty">暂无可显示的证据。</p>';
+          document.getElementById('categoryList').innerHTML = '<p class="empty">暂无类别统计。</p>';
+        }
+      } finally {
+        if (requestId === reportRequestSequence) {
+          reportController = null;
+          setLoading(false);
+        }
+      }
+    }
+
+    document.getElementById('scopeSelect').addEventListener('change', e => {
+      document.getElementById('conversationIdInput').value = e.target.value;
+      document.getElementById('evidenceSearch').value = '';
+      loadData();
+    });
+    document.getElementById('evidenceSearch').addEventListener('input', () => {
+      clearTimeout(evidenceSearchTimer);
+      evidenceSearchTimer = setTimeout(applyEvidenceFilter, 200);
+    });
+    document.addEventListener('click', event => {
+      const link = event.target.closest('a[href^="#"]');
+      if (!link) return;
+      const target = document.getElementById(link.getAttribute('href').slice(1));
+      if (target) { target.hidden = false; if ('open' in target) target.open = true; }
+    });
+    document.addEventListener('toggle', event => {
+      if (event.target.matches && event.target.matches('details.event') && event.target.open) loadEventDetail(event.target);
+    }, true);
+
+    function selectCategory(category) {
+      const select = document.getElementById('categorySelect');
+      if (select.value === category) return;
+      select.value = category;
       loadData();
     }
+
+    const categoryList = document.getElementById('categoryList');
+    categoryList.addEventListener('click', event => {
+      const item = event.target.closest('.cat-item');
+      if (!item || !event.currentTarget.contains(item)) return;
+      selectCategory(item.dataset.category);
+    });
+    categoryList.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const item = event.target.closest('.cat-item');
+      if (!item || !event.currentTarget.contains(item)) return;
+      event.preventDefault();
+      selectCategory(item.dataset.category);
+    });
+    document.getElementById('clearCategory').addEventListener('click', () => selectCategory(''));
 
     async function loadConversations() {
       try {
@@ -421,11 +646,8 @@
     document.querySelector('#statusSelect').addEventListener('change', loadData);
     for (const id of ['accountInput', 'conversationInput', 'conversationIdInput']) {
       document.getElementById(id).addEventListener('change', loadData);
-      document.getElementById(id).addEventListener('input', (e) => {
-        if (!e.target.value) loadData();
-      });
+      document.getElementById(id).addEventListener('input', e => { if (!e.target.value) loadData(); });
     }
-    
     document.querySelector('#btnExportCsv').addEventListener('click', () => {
       window.open('/api/wecom/report-export?format=csv&' + filterParams());
     });

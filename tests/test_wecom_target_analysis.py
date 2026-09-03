@@ -87,6 +87,27 @@ class TargetAnalysisTests(unittest.TestCase):
             second = next(item for item in items if item["question_raw_text"] != QUESTION)
             self.assertEqual(second["issue_status"], "unreplied")
 
+    def test_index_categories_follow_scope_and_ignore_current_category_or_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = WecomLocalStorage(Path(directory) / "analysis.db")
+            storage.initialize()
+            storage.upsert_messages([
+                record("pickup", 0, "请安排提货", account_id="scope-a", conversation_name="范围甲"),
+                record("quote", 1, "请报价", account_id="scope-a", conversation_name="范围甲"),
+                record("other", 0, "请报价", account_id="scope-b", conversation_name="范围乙"),
+            ])
+            storage.rebuild_analysis()
+
+            scoped = storage.get_report(view="index", account_id="scope-a", conversation_name="范围甲")
+            self.assertEqual(set(scoped["available_categories"]), {"提货安排", "询价报价"})
+            narrowed = storage.get_report(
+                view="index", account_id="scope-a", conversation_name="范围甲",
+                category="提货安排", status="unreplied"
+            )
+            self.assertEqual(narrowed["available_categories"], scoped["available_categories"])
+            other_scope = storage.get_report(view="index", account_id="scope-b", conversation_name="范围乙")
+            self.assertEqual(other_scope["available_categories"], ["询价报价"])
+
     def test_context_llm_grounds_entities_and_rejects_foreign_ids(self):
         class Client:
             def complete(self, system, user):

@@ -773,13 +773,22 @@ class TestRecursiveEvidence(unittest.TestCase):
             thread = Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                query = urlencode({"conversation_name": "目标", "format": "json"})
+                query = urlencode({"conversation_name": "目标", "format": "json", "view": "index"})
                 with urlopen(f"http://127.0.0.1:{server.server_port}/api/wecom/report-export?{query}", timeout=5) as response:
                     self.assertIn("attachment", response.headers["Content-Disposition"])
                     report = json.load(response)
                 self.assertEqual(len(report["messages"]), 1)
                 self.assertEqual(report["metrics"]["unreplied_count"], 1)
                 self.assertFalse(report["coverage"]["full_history_verified"])
+                with urlopen(f"http://127.0.0.1:{server.server_port}/api/wecom/report?{urlencode({'conversation_name': '目标', 'view': 'index'})}", timeout=5) as response:
+                    index = json.load(response)
+                self.assertEqual(len(index["messages"]), 0)
+                self.assertEqual(index["coverage"]["conversation_message_count"], 1)
+                detail_query = urlencode({"conversation_name": "目标", "message_id": index["events"][0]["message_id"]})
+                with urlopen(f"http://127.0.0.1:{server.server_port}/api/wecom/report-detail?{detail_query}", timeout=5) as response:
+                    detail = json.load(response)
+                self.assertEqual(detail["event"]["message_id"], index["events"][0]["message_id"])
+                self.assertEqual(detail["event"]["text"], report["messages"][0]["text"])
             finally:
                 server.shutdown()
                 server.server_close()
@@ -870,6 +879,28 @@ class TestRecursiveEvidence(unittest.TestCase):
             self.assertEqual(len(report["messages"]), 4)
             self.assertEqual(len(report["events"][0]["responses"]), 2)
             self.assertEqual(report["routes"][0]["region"], "华北→华东")
+            category_counts = {row["category"]: row["count"] for row in report["category_counts"]}
+            self.assertEqual(category_counts["询价报价"], report["metrics"]["question_count"])
+            self.assertGreater(sum(category_counts.values()), report["metrics"]["question_count"])
+            self.assertEqual(report["available_categories"], sorted(report["available_categories"]))
+
+            index = WecomLocalStorage(db).get_report(
+                conversation_name="目标群", category="询价报价", view="index"
+            )
+            self.assertEqual(index["metrics"]["question_count"], 1)
+            self.assertEqual(len(index["messages"]), 0)
+            self.assertEqual(index["coverage"]["conversation_message_count"], 4)
+            index_category_counts = {row["category"]: row["count"] for row in index["category_counts"]}
+            self.assertEqual(index_category_counts["询价报价"], index["metrics"]["question_count"])
+            self.assertGreater(len(index_category_counts), 1)
+            detail = WecomLocalStorage(db).get_report_detail(
+                message_id=report["events"][0]["message_id"],
+                conversation_name="目标群", category="询价报价"
+            )
+            self.assertIsNotNone(detail)
+            self.assertEqual(detail["event"]["text"], report["events"][0]["text"])
+            self.assertEqual(len(detail["event"]["responses"]), 2)
+            self.assertTrue(all(response["basis"] for response in detail["event"]["responses"]))
 
     def test_exact_mentions_and_followup_branch_have_distinct_latencies(self):
         from chatlog_assistant.sources.wecom_pipeline import import_normalized_jsonl

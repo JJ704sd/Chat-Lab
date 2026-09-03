@@ -49,9 +49,11 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
                               for key in ("conversation_id", "conversation_name")}
 
         if parsed.path in ("/api/wecom/report", "/api/wecom/report-export"):
-            report = self.storage.get_report(**conversation_scope, account_id=account_id,
-                                             subject=subject, category=category, status=status)
             if parsed.path.endswith("report-export"):
+                # Exports intentionally keep the complete, backwards-compatible
+                # evidence payload even when the page uses the index view.
+                report = self.storage.get_report(**conversation_scope, account_id=account_id,
+                                                 subject=subject, category=category, status=status)
                 if query.get("format", ["json"])[0] == "csv":
                     from .wecom_report import write_report
                     with tempfile.TemporaryDirectory() as directory:
@@ -62,7 +64,33 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
                     self._send_attachment(json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8"),
                                           "application/json; charset=utf-8", "wecom_report.json")
             else:
+                view = query.get("view", [None])[0] or None
+                include_messages = query.get("include_messages", [None])[0]
+                if include_messages is not None and include_messages.lower() in ("0", "false", "no"):
+                    view = "index"
+                report = self.storage.get_report(**conversation_scope, account_id=account_id,
+                                                 subject=subject, category=category, status=status,
+                                                 view=view)
                 self._send_json(report)
+            return
+
+        if parsed.path == "/api/wecom/report-detail":
+            message_id = query.get("message_id", [None])[0] or None
+            if not message_id:
+                self.send_error(HTTPStatus.BAD_REQUEST, "缺少 message_id")
+                return
+            detail = self.storage.get_report_detail(
+                message_id=message_id,
+                **conversation_scope,
+                account_id=account_id,
+                subject=subject,
+                category=category,
+                status=status,
+            )
+            if detail is None:
+                self.send_error(HTTPStatus.NOT_FOUND, "当前筛选下找不到该业务轮次")
+                return
+            self._send_json(detail)
             return
 
         if parsed.path == "/api/wecom/summary":

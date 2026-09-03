@@ -39,6 +39,15 @@ def latency_stats(values):
             "min_seconds": min(values) if values else None, "max_seconds": max(values) if values else None}
 
 
+def category_statistics(events):
+    """Count every category label on every business round (multi-label aware)."""
+    counts = Counter()
+    for event in events:
+        counts.update(event.get("category_statuses", {}).keys())
+    return [{"category": category, "count": count}
+            for category, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+
+
 def region(location):
     if not location:
         return "未知"
@@ -66,6 +75,9 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
     excluded = [m for m in messages if m['provenance'].get('origin')!='database' and m['conversation_name'].casefold() in verified_names]
     messages = [m for m in messages if m not in excluded]
     by_id = {m["id"]: m for m in messages}
+    available_categories = sorted({issue["category"] for issue in issues
+                                   if issue["message_id"] in by_id
+                                   and (not subject or by_id[issue["message_id"]]["subject_bucket"] == subject)})
     by_question, by_issue = defaultdict(list), defaultdict(list)
     for issue in issues:
         by_question[issue["message_id"]].append(issue)
@@ -189,6 +201,10 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
     restricted_solved = sum(e['status']=='solved' for e in restricted)
     timestamps = [m["sent_at"] for m in messages if m["sent_at"]]
     coverage = {"message_count": len(messages), "first_message_at": min(timestamps) if timestamps else None,
+                "conversation_message_count": len(messages),
+                "filtered_message_count": len({event["message_id"] for event in events}
+                                               | {response["message_id"] for event in events
+                                                  for response in event["responses"]}),
                 "last_message_at": max(timestamps) if timestamps else None,
                 "missing_timestamp_count": sum(m["sent_at"] is None for m in messages),
                 "forward_count": sum(m["message_type"] == "合并转发记录" for m in messages),
@@ -215,9 +231,10 @@ def build_report(messages, issues, responses, *, subject=None, category=None, st
                               "rejection_rate": len(rejected) / len(special) if special else None},
             "shipment_constraints": {"question_count":len(restricted),'handled_count':restricted_solved,
                                      'handling_rate':restricted_solved/len(restricted) if restricted else None},
-            "association_quality": {'heuristic_ack_count':sum(r['basis']=='nearest_open_question_within_5m' for e in events for r in e['responses']),
-                                    'questions_flagged_for_review':sum(e['needs_review'] for e in events)},
-            "routes": route_rows, "events": events, "messages": messages})
+             "association_quality": {'heuristic_ack_count':sum(r['basis']=='nearest_open_question_within_5m' for e in events for r in e['responses']),
+                                     'questions_flagged_for_review':sum(e['needs_review'] for e in events)},
+             "category_counts": category_statistics(events), "available_categories": available_categories,
+             "routes": route_rows, "events": events, "messages": messages})
 
 
 def write_report(report, output_dir):

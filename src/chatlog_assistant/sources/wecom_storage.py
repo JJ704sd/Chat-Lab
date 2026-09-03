@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from collections import defaultdict
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -498,8 +499,289 @@ class WecomLocalStorage:
                 return int(row["sequence"]), str(row["message_id"])
         return 0, ""
 
+    @staticmethod
+    def _report_scope_sql(*, account_id=None, conversation_id=None, conversation_name=None,
+                          alias="m") -> tuple[str, list[Any]]:
+        prefix = f"{alias}." if alias else ""
+        clauses, params = [], []
+        if account_id:
+            clauses.append(f"{prefix}account_id=?")
+            params.append(account_id)
+        if conversation_id:
+            clauses.append(f"({prefix}conversation_id=? OR instr({prefix}conversation_id, ? || ':forwarded:')=1)")
+            params.extend([conversation_id, conversation_id])
+        if conversation_name:
+            clauses.append(f"instr(lower({prefix}conversation_name), lower(?))>0")
+            params.append(conversation_name)
+        return ("WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+    @staticmethod
+    def _in_clause(values) -> str:
+        return ",".join("?" for _ in values)
+
+    @staticmethod
+    def _index_event(event: dict[str, Any]) -> dict[str, Any]:
+        """Keep the report index useful without sending message/reply bodies."""
+        return {
+            "round": event["round"],
+            "message_id": event["message_id"],
+            "source_message_id": event["source_message_id"],
+            "sent_at": event["sent_at"],
+            "sender_name": event["sender_name"],
+            "subject_bucket": event["subject_bucket"],
+            "subject_basis": event["subject_basis"],
+            "text_preview": event["text"][:120],
+            "parent_id": event["parent_id"],
+            "nesting_depth": event["nesting_depth"],
+            "clues": {
+                key: event["clues"].get(key)
+                for key in ("origin", "destination", "route_items", "destination_items")
+                if event["clues"].get(key) is not None
+            },
+            "route_coverage": event["route_coverage"],
+            "status": event["status"],
+            "needs_review": event["needs_review"],
+            "category_statuses": event["category_statuses"],
+            "first_response_seconds": event["first_response_seconds"],
+            "ack_seconds": event["ack_seconds"],
+            "solution_seconds": event["solution_seconds"],
+            "final_solution_seconds": event["final_solution_seconds"],
+            "first_ack_at": event["first_ack_at"],
+            "response_count": len(event["responses"]),
+            "has_parent_evidence": bool(event["parent_id"]),
+        }
+
+    def _get_report_index(self, *, account_id=None, conversation_id=None, conversation_name=None,
+                          subject=None, category=None, status=None) -> dict[str, Any]:
+        """Build the dashboard index from scoped rows and only related evidence rows."""
+        from .wecom_report import build_report
+
+        scope_where, scope_params = self._report_scope_sql(
+            account_id=account_id, conversation_id=conversation_id,
+            conversation_name=conversation_name,
+        )
+        with self.connect() as conn:
+            # Metadata is enough for coverage and provenance filtering. The
+            # full message body is fetched only for candidate rounds/replies.
+            scope_rows = [dict(row) for row in conn.execute(
+                f"""
+                SELECT m.id, m.conversation_id, m.conversation_name, m.subject_bucket, m.message_type,
+                       m.sent_at, m.parse_status, m.nesting_depth, m.provenance_json
+                FROM messages m {scope_where}
+                """, scope_params,
+            )]
+            verified_names = {
+                row["conversation_name"].casefold()
+                for row in scope_rows
+                if json.loads(row.get("provenance_json") or "{}").get("origin") == "database"
+            }
+            valid_rows = [
+                row for row in scope_rows
+                if not (
+                    json.loads(row.get("provenance_json") or "{}").get("origin") != "database"
+                    and row["conversation_name"].casefold() in verified_names
+                )
+            ]
+            valid_ids = {row["id"] for row in valid_rows}
+            metadata_by_id = {row["id"]: row for row in valid_rows}
+
+            issue_pairs = [dict(row) for row in conn.execute(
+                f"""
+                SELECT i.message_id, i.category
+                FROM issues i JOIN messages m ON m.id=i.message_id
+                {scope_where}
+                """, scope_params,
+            )]
+            available_categories = sorted({
+                row["category"] for row in issue_pairs
+                if row["message_id"] in valid_ids
+                and (not subject or metadata_by_id[row["message_id"]]["subject_bucket"] == subject)
+            })
+            candidate_ids = {
+                row["message_id"] for row in issue_pairs
+                if row["message_id"] in valid_ids
+                and (not subject or metadata_by_id[row["message_id"]]["subject_bucket"] == subject)
+                and (not category or row["category"] == category)
+            }
+
+            issue_rows: list[dict[str, Any]] = []
+            if candidate_ids:
+                placeholders = self._in_clause(candidate_ids)
+                issue_rows = [dict(row) for row in conn.execute(
+                    f"SELECT * FROM issues WHERE message_id IN ({placeholders})", list(candidate_ids)
+                )]
+
+            # build_report deliberately chooses the same primary issue rows as
+            # the complete report. Fetch replies only for those rows.
+            by_question = defaultdict(list)
+            for issue in issue_rows:
+                by_question[issue["message_id"]].append(issue)
+            primary_issue_ids = set()
+            for issues_for_question in by_question.values():
+                primary = ([issue for issue in issues_for_question if issue["category"] == category]
+                           if category else
+                           [issue for issue in issues_for_question if issue["category"] == "询价报价"]
+                           or issues_for_question)
+                primary_issue_ids.update(issue["id"] for issue in primary)
+
+            response_rows: list[dict[str, Any]] = []
+            if primary_issue_ids:
+                placeholders = self._in_clause(primary_issue_ids)
+                response_rows = [dict(row) for row in conn.execute(
+                    f"SELECT * FROM responses WHERE issue_id IN ({placeholders})", list(primary_issue_ids)
+                )]
+            response_message_ids = {row["response_message_id"] for row in response_rows} & valid_ids
+            needed_ids = candidate_ids | response_message_ids
+            message_rows: list[dict[str, Any]] = []
+            if needed_ids:
+                placeholders = self._in_clause(needed_ids)
+                message_rows = [dict(row) for row in conn.execute(
+                    f"SELECT * FROM messages WHERE id IN ({placeholders})", list(needed_ids)
+                )]
+
+        report = build_report(message_rows, issue_rows, response_rows,
+                              subject=subject, category=category, status=status)
+        valid_timestamps = [row["sent_at"] or None for row in valid_rows]
+        valid_timestamps = [value for value in valid_timestamps if value]
+        valid_origins = [json.loads(row.get("provenance_json") or "{}") for row in valid_rows]
+        scope_groups = defaultdict(int)
+        for row in valid_rows:
+            if row["nesting_depth"] > 0:
+                scope_groups[row["conversation_id"]] += 1
+        scope_options = [{"conversation_id": conversation_id, "message_count": count}
+                         for conversation_id, count in sorted(scope_groups.items(),
+                                                              key=lambda item: (-item[1], item[0]))]
+        coverage = {
+            "message_count": len(valid_rows),
+            "conversation_message_count": len(valid_rows),
+            "filtered_message_count": report["coverage"]["filtered_message_count"],
+            "first_message_at": min(valid_timestamps) if valid_timestamps else None,
+            "last_message_at": max(valid_timestamps) if valid_timestamps else None,
+            "missing_timestamp_count": sum(not row["sent_at"] for row in valid_rows),
+            "forward_count": sum(row["message_type"] == "合并转发记录" for row in valid_rows),
+            "unexpanded_forward_count": sum(row["parse_status"] in ("unexpanded_forward", "partial_forward")
+                                             for row in valid_rows),
+            "unparsed_media_count": sum(row["parse_status"] == "unparsed_media" for row in valid_rows),
+            "nested_message_count": sum(row["nesting_depth"] > 0 for row in valid_rows),
+            "max_nesting_depth": max((row["nesting_depth"] for row in valid_rows), default=0),
+            "database_backed_count": sum(item.get("origin") == "database" for item in valid_origins),
+            "unverified_source_count": sum(item.get("origin") != "database" for item in valid_origins),
+            "excluded_unverified_source_count": len(scope_rows) - len(valid_rows),
+            "display_redacted_count": None,
+            "available_forwards_expanded": all(
+                row["parse_status"] == "expanded_forward"
+                for row in valid_rows if row["message_type"] == "合并转发记录"
+            ),
+            "full_history_verified": False,
+            "note": (
+                "真实数据库与转发载荷已按本地快照核验；云端完整历史、未解析媒体内容仍未证明。已解决表示有报价或处置结论。"
+                if verified_names else
+                "本地可用材料范围；原库与全部转发层完整性尚未证明。手工或规范化导入不能证明真实来源。"
+            ),
+        }
+        index_events = [self._index_event(event) for event in report["events"]]
+        report.update({
+            "view": "index",
+            "coverage": coverage,
+            "available_categories": available_categories,
+            "scope_options": scope_options,
+            "events": index_events,
+            "messages": [],
+            "ancestors": [],
+            "detail_endpoint": "/api/wecom/report-detail",
+        })
+        return report
+
+    def get_report_detail(self, *, message_id, account_id=None, conversation_id=None,
+                          conversation_name=None, subject=None, category=None, status=None) -> dict[str, Any] | None:
+        """Return one complete business round and its parent evidence on demand."""
+        from .wecom_report import build_report
+
+        scope_where, scope_params = self._report_scope_sql(
+            account_id=account_id, conversation_id=conversation_id,
+            conversation_name=conversation_name,
+        )
+        with self.connect() as conn:
+            target_rows = [dict(row) for row in conn.execute(
+                f"""
+                SELECT m.* FROM messages m {scope_where}
+                AND (m.id=? OR m.message_id=?)
+                """ if scope_where else
+                """
+                SELECT m.* FROM messages m
+                WHERE (m.id=? OR m.message_id=?)
+                """,
+                [*scope_params, message_id, message_id],
+            )]
+            if not target_rows:
+                return None
+            scope_meta = [dict(row) for row in conn.execute(
+                f"SELECT m.id, m.conversation_name, m.provenance_json FROM messages m {scope_where}",
+                scope_params,
+            )]
+            verified_names = {
+                row["conversation_name"].casefold()
+                for row in scope_meta
+                if json.loads(row.get("provenance_json") or "{}").get("origin") == "database"
+            }
+            valid_scope_ids = {
+                row["id"] for row in scope_meta
+                if not (
+                    json.loads(row.get("provenance_json") or "{}").get("origin") != "database"
+                    and row["conversation_name"].casefold() in verified_names
+                )
+            }
+            target = next((row for row in target_rows if row["id"] == message_id), target_rows[0])
+            if target["id"] not in valid_scope_ids:
+                return None
+            issue_rows = [dict(row) for row in conn.execute(
+                "SELECT * FROM issues WHERE message_id=?", (target["id"],)
+            )]
+            if not issue_rows:
+                return None
+            issue_ids = [row["id"] for row in issue_rows]
+            placeholders = self._in_clause(set(issue_ids))
+            response_rows = [dict(row) for row in conn.execute(
+                f"SELECT * FROM responses WHERE issue_id IN ({placeholders})", issue_ids
+            )]
+            related_ids = ({target["id"]} | {row["response_message_id"] for row in response_rows}) & valid_scope_ids
+            placeholders = self._in_clause(related_ids)
+            message_rows = [dict(row) for row in conn.execute(
+                f"SELECT * FROM messages WHERE id IN ({placeholders})", list(related_ids)
+            )]
+
+            known = {row["id"] for row in message_rows}
+            pending = {row["parent_id"] for row in message_rows if row["parent_id"]} - known
+            ancestors = []
+            while pending:
+                placeholders = self._in_clause(pending)
+                parents = [dict(row) for row in conn.execute(
+                    f"SELECT * FROM messages WHERE id IN ({placeholders})", list(pending)
+                )]
+                known.update(pending)
+                ancestors.extend(parents)
+                pending = {row["parent_id"] for row in parents if row["parent_id"]} - known
+
+        report = build_report(message_rows, issue_rows, response_rows,
+                              subject=subject, category=category, status=status)
+        events = [event for event in report["events"] if event["message_id"] == target["id"]]
+        if not events:
+            return None
+        ancestor_report = build_report(ancestors, [], []) if ancestors else {"messages": []}
+        return {
+            "event": events[0],
+            "messages": report["messages"],
+            "ancestors": ancestor_report["messages"],
+        }
+
     def get_report(self, *, account_id=None, conversation_id=None, conversation_name=None,
-                   subject=None, category=None, status=None) -> dict[str, Any]:
+                   subject=None, category=None, status=None, view=None) -> dict[str, Any]:
+        if view == "index":
+            return self._get_report_index(
+                account_id=account_id, conversation_id=conversation_id,
+                conversation_name=conversation_name, subject=subject,
+                category=category, status=status,
+            )
         from .wecom_report import build_report
         clauses, params = [], []
         if account_id:
