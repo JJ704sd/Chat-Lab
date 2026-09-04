@@ -129,6 +129,11 @@ class WecomLocalStorage:
             conn.executescript(LOCAL_SCHEMA)
             from .wecom_pricing import PRICE_SCHEMA
             conn.executescript(PRICE_SCHEMA)
+            # Airfreight uses additive, business-line-isolated tables.  Keep
+            # this import local so the legacy storage import graph stays
+            # unchanged for existing callers.
+            from .wecom_airfreight import AIRFREIGHT_SCHEMA
+            conn.executescript(AIRFREIGHT_SCHEMA)
             # Additive migration: old readers/writers and old rows stay valid.
             columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)")}
             for name, definition in (("parent_id", "TEXT"), ("root_message_id", "TEXT"),
@@ -1352,6 +1357,11 @@ class WecomLocalStorage:
         from .wecom_pricing import PriceMaintenance
         self.initialize()
         return PriceMaintenance(self, **kwargs)
+
+    def airfreight(self):
+        """Return the additive airfreight demo service."""
+        from .wecom_airfreight import AirfreightService
+        return AirfreightService(self)
 
     def list_prices(self, **kwargs):
         return self.price_maintenance().list_prices(**kwargs)

@@ -113,6 +113,13 @@ def build_parser() -> argparse.ArgumentParser:
     # 8. serve
     srv = sub.add_parser("serve", help="启动本地 Web 交互查询界面 (仅监听 127.0.0.1)")
     srv.add_argument("--analysis-db", type=Path, default=DEFAULT_ANALYSIS_DB)
+    srv.add_argument("--source-analysis-db", type=Path, action="append", default=[],
+                     help="空运流程 B 可只读发现的规范化本机来源库；可重复指定，不接受网页传入路径")
+    srv.set_defaults(include_demo_fixtures=True)
+    srv.add_argument("--include-demo-fixtures", dest="include_demo_fixtures", action="store_true",
+                     help="显示明确标注的合成演示数据（默认开启；不会标记为真实本地群聊）")
+    srv.add_argument("--no-demo-fixtures", dest="include_demo_fixtures", action="store_false",
+                     help="隐藏合成演示数据，仅显示配置的本机规范化来源")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8766)
 
@@ -278,7 +285,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.subcommand == "serve":
         storage = WecomLocalStorage(args.analysis_db)
-        serve_wecom(storage, host=args.host, port=args.port)
+        source_dbs = args.source_analysis_db or [args.analysis_db]
+        serve_wecom(storage, host=args.host, port=args.port, source_analysis_dbs=source_dbs,
+                    include_demo_fixtures=args.include_demo_fixtures)
         return 0
 
     if args.subcommand in {"prices", "prices-export"}:

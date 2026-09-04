@@ -9,6 +9,7 @@ import re
 import secrets
 import sys
 import tempfile
+import uuid
 from urllib.parse import parse_qs, urlparse, unquote
 
 from .wecom_storage import WecomLocalStorage
@@ -19,12 +20,19 @@ from .wecom_pricing import (
     PriceOperationError,
     build_price_workbook,
 )
+from .wecom_airfreight import AirfreightOperationError, AirfreightService
 
 
 class WecomDashboardHandler(BaseHTTPRequestHandler):
     storage: WecomLocalStorage
     dashboard_bytes: bytes = b""
+    legacy_dashboard_bytes: bytes = b""
     csrf_token: str = secrets.token_urlsafe(24)
+    airfreight_source_paths: tuple[Path, ...] = ()
+    # This handler serves the local demonstration page.  Its synthetic source
+    # is explicitly labeled in every API/UI view and remains independent from
+    # configured real local sources.
+    airfreight_include_demo_fixtures: bool = True
 
     protocol_version = "HTTP/1.1"
 
@@ -48,6 +56,10 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
 
+        if parsed.path == "/legacy/pickup":
+            self._send_bytes(self.legacy_dashboard_bytes, "text/html; charset=utf-8")
+            return
+
         if parsed.path in ("/", "/wecom", "/index.html"):
             self._send_bytes(self.dashboard_bytes, "text/html; charset=utf-8")
             return
@@ -63,6 +75,17 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             return
 
         query = parse_qs(parsed.query)
+
+        air_path = self._airfreight_path(parsed.path)
+        if air_path is not None:
+            try:
+                self._handle_airfreight_get(air_path, query)
+            except AirfreightOperationError as exc:
+                self._send_error(exc.http_status, exc.error_code, exc.message, details=exc.details)
+            except (ValueError, TypeError):
+                self._send_error(HTTPStatus.BAD_REQUEST, "invalid_airfreight_request", "空运查询参数无效")
+            return
+
         account_id = query.get("account_id", [None])[0] or None
         source_database = query.get("source_database", [None])[0] or None
         subject = query.get("subject", [None])[0] or None
@@ -322,6 +345,123 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
 
         self.send_error(HTTPStatus.NOT_FOUND)
 
+    @staticmethod
+    def _airfreight_path(path: str) -> str | None:
+        """Accept the new first-class route and a namespaced compatibility alias."""
+        if path.startswith("/api/airfreight/"):
+            return path
+        if path.startswith("/api/wecom/airfreight/"):
+            return "/api/airfreight/" + path[len("/api/wecom/airfreight/"):]
+        return None
+
+    def _handle_airfreight_get(self, path: str, query: dict[str, list[str]]) -> None:
+        # Storage initialization happens once at server startup.  GET handlers
+        # must remain read-only: discovering sources, metadata, previews and
+        # evidence cannot create demo rows or trigger analysis.
+        service = AirfreightService(
+            self.storage, initialize=False, source_db_paths=self.airfreight_source_paths or (self.storage.path,),
+            include_demo_fixtures=self.airfreight_include_demo_fixtures,
+        )
+        artifact_match = re.fullmatch(r"/api/airfreight/artifacts/([^/]+)/(preview|download)", path)
+        if artifact_match:
+            artifact = service.get_artifact_bytes(unquote(artifact_match.group(1)))
+            if artifact is None:
+                raise AirfreightOperationError("artifact_unavailable", "附件原件不可得或不存在", http_status=404)
+            data, mime, name = artifact
+            if artifact_match.group(2) == "download":
+                self._send_attachment(data, mime, name)
+            else:
+                self._send_bytes(data, mime)
+            return
+        if path == "/api/airfreight/meta":
+            self._send_json({
+                "business_line": "airfreight", "title": "企微信息分析助手", "subtitle": "空运业务信息分析",
+                "demo_data": True, "default_search": "中技AI cosplay", "flows": {"A": "每日索价与发布最新价卡", "B": "本地群聊导入与多选项报价"},
+                "steps": {"A": ["开始每日索价演示", "模拟供应商回复", "接收多文件回复", "解析文件", "查看字段证据", "跨文件查重", "人工审核", "发布最新价卡", "查看发布结果"], "B": ["选择本地群聊数据", "选择账号、目标群和时间", "预览完整性", "确认导入并分析", "查看聊天证据", "解析询价与多票截图", "处理待确认项", "计算计费重", "匹配最新价卡", "生成内部测算", "人工确认报价", "生成报价预览"]},
+                "legacy_entry": {"path": "/legacy/pickup", "label": "历史揽收分析（只读）"}, "settings": service.settings(),
+            })
+            return
+        if path == "/api/airfreight/demo":
+            self._send_json(service.demo_state(query.get("flow", [None])[0]))
+            return
+        if path == "/api/airfreight/settings":
+            self._send_json(service.settings())
+            return
+        if path == "/api/airfreight/sources":
+            self._send_json(service.list_chat_sources())
+            return
+        if path == "/api/airfreight/chat/preview":
+            scope = {key: query.get(key, [None])[0] for key in ("source_key", "account_id", "source_snapshot", "conversation_id", "conversation_name", "target_root_message_id", "start_at", "end_at")}
+            self._send_json(service.preview_chat(scope))
+            return
+        chat_match = re.fullmatch(r"/api/airfreight/chat/import/([^/]+)(?:/(evidence|messages))?", path)
+        if chat_match:
+            import_id = unquote(chat_match.group(1))
+            self._send_json(service.chat_evidence(import_id) if chat_match.group(2) == "evidence" else service.get_chat_import(import_id))
+            return
+        if path == "/api/airfreight/batches":
+            self._send_json(service.list_batches(limit=int(query.get("limit", [50])[0])))
+            return
+        batch_match = re.fullmatch(r"/api/airfreight/batches/([^/]+)(?:/(parse|evidence))?", path)
+        if batch_match:
+            self._send_json(service.get_batch(unquote(batch_match.group(1))))
+            return
+        if path == "/api/airfreight/rate-cards":
+            self._send_json(service.list_rate_cards(view=query.get("view", ["current"])[0] or "current", batch_id=query.get("batch_id", [None])[0], destination=query.get("destination", [None])[0]))
+            return
+        rate_sheet_match = re.fullmatch(r"/api/airfreight/rate-cards/([^/]+)/published-sheet(\.pdf)?", path)
+        if rate_sheet_match:
+            version_id = unquote(rate_sheet_match.group(1))
+            if rate_sheet_match.group(2):
+                data, filename = service.published_rate_card_pdf(version_id)
+                self._send_attachment(data, "application/pdf", filename)
+            else:
+                self._send_json(service.published_rate_card_sheet(version_id))
+            return
+        version_match = re.fullmatch(r"/api/airfreight/rate-cards/([^/]+)(?:/(evidence|rates))?", path)
+        if version_match:
+            version_id = unquote(version_match.group(1))
+            if version_match.group(2) == "evidence":
+                self._send_json({"version_id": version_id, "items": service.field_evidence(entity_type="rate_card_version", entity_id=version_id)})
+            else:
+                items = [item for item in service.list_rate_cards(view="all")["items"] if item["version_id"] == version_id]
+                self._send_json(items[0] if items else {"version_id": version_id, "rates": []})
+            return
+        if path == "/api/airfreight/conflicts":
+            self._send_json({"items": service.list_conflicts(query.get("batch_id", [None])[0]), "total": len(service.list_conflicts(query.get("batch_id", [None])[0]))})
+            return
+        if path == "/api/airfreight/quotes":
+            self._send_json(service.list_quotes(import_id=query.get("import_id", [None])[0]))
+            return
+        quote_pdf_match = re.fullmatch(r"/api/airfreight/quote-preview/([^/]+)/quotation\.pdf", path)
+        if quote_pdf_match:
+            data, filename = service.quote_pdf(unquote(quote_pdf_match.group(1)))
+            self._send_attachment(data, "application/pdf", filename)
+            return
+        quote_match = re.fullmatch(r"/api/airfreight/quotes/([^/]+)(?:/(weight|match|calculation|evidence))?", path)
+        if quote_match:
+            quote_id = unquote(quote_match.group(1))
+            action = quote_match.group(2)
+            if action == "weight":
+                self._send_json(service.calculate_chargeable_weight(quote_id))
+            elif action == "match":
+                self._send_json(service.match_rates(quote_id))
+            elif action == "calculation":
+                self._send_json(service.generate_internal_calculation(quote_id))
+            elif action == "evidence":
+                detail = service.get_quote_detail(quote_id)
+                self._send_json({"quote_request_id": quote_id, "items": [service.field_evidence(entity_type="package_group", entity_id=group["package_group_id"]) for group in detail["package_groups"]]})
+            else:
+                self._send_json(service.get_quote_detail(quote_id))
+            return
+        if path == "/api/airfreight/quote-preview":
+            self._send_json(service.quote_preview(import_id=query.get("import_id", [None])[0]))
+            return
+        if path == "/api/airfreight/health":
+            self._send_json({"status": "ok", "business_line": "airfreight", "external_model": False})
+            return
+        raise AirfreightOperationError("not_found", "空运接口不存在", http_status=404)
+
     def _send_json(self, value: object, status: int = HTTPStatus.OK) -> None:
         data = json.dumps(display_safe_value(value), ensure_ascii=False).encode("utf-8")
         self._send_bytes(data, "application/json; charset=utf-8", status=status)
@@ -439,6 +579,10 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         actor_name = unquote(self.headers.get("X-Operator-Name", "")) or None
         try:
             body = self._read_body()
+            air_path = self._airfreight_path(parsed.path)
+            if air_path is not None:
+                self._handle_airfreight_post(air_path, body, actor_id=actor_id, actor_name=actor_name)
+                return
             if parsed.path == "/api/wecom/price-candidates":
                 value = self._request_json(body)
                 # Browser writes are always human-originated candidates.  A
@@ -547,16 +691,104 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.NOT_FOUND, "not_found", "接口不存在")
         except PriceOperationError as exc:
             self._send_error(exc.http_status, exc.error_code, exc.message, field_errors=exc.field_errors, details=exc.details)
+        except AirfreightOperationError as exc:
+            self._send_error(exc.http_status, exc.error_code, exc.message, details=exc.details)
         except (ValueError, TypeError) as exc:
             self._send_error(HTTPStatus.BAD_REQUEST, "invalid_request", str(exc))
         except Exception:
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "服务器处理失败，请查看本地日志或刷新后重试")
+
+    def _handle_airfreight_post(self, path: str, body: bytes, *, actor_id: str | None, actor_name: str | None) -> None:
+        service = AirfreightService(
+            self.storage, source_db_paths=self.airfreight_source_paths or (self.storage.path,),
+            include_demo_fixtures=self.airfreight_include_demo_fixtures,
+        )
+        value = self._request_json(body) if body else {}
+        if path == "/api/airfreight/demo/reset":
+            self._send_json(service.reset_demo())
+            return
+        if path == "/api/airfreight/demo/reviewer":
+            # The browser cannot nominate an arbitrary reviewer.  This action
+            # only enables the named, deterministic local demo identity.
+            self._send_json(service.configure_demo_reviewer(), status=HTTPStatus.CREATED)
+            return
+        if path == "/api/airfreight/demo/step":
+            # Browser writes must use the server-owned state machine.  The
+            # legacy unversioned ``flow + step`` shape is intentionally not
+            # accepted here because it allowed a stale page to forge progress.
+            self._send_json(service.transition_demo(
+                value.get("flow", "A"), value.get("action", ""),
+                state_version=value.get("state_version"), payload=value.get("payload") or {"step": value.get("step"), "scope": value.get("scope"), "confirm": value.get("confirm"), "mode": value.get("mode"), "reason": value.get("reason")},
+                actor_id=actor_id, actor_name=actor_name,
+                idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key"),
+            ))
+            return
+        if path == "/api/airfreight/batches":
+            files = value.get("files")
+            if value.get("demo") or files is None:
+                result = service.ensure_demo_batch()
+            else:
+                if not isinstance(files, list):
+                    raise AirfreightOperationError("invalid_files", "files 必须是数组", http_status=400)
+                result = service.create_batch(files=files, batch_kind=value.get("batch_kind", "manual_rate_card"), source_scope=value.get("source_scope") or {}, request_id=value.get("request_id") or self.headers.get("Idempotency-Key"))
+            self._send_json(result, status=HTTPStatus.CREATED)
+            return
+        batch_parse = re.fullmatch(r"/api/airfreight/batches/([^/]+)/parse", path)
+        if batch_parse:
+            self._send_json(service.parse_batch(unquote(batch_parse.group(1))))
+            return
+        if path == "/api/airfreight/chat/import":
+            self._send_json(service.confirm_chat_import(value, actor_id=actor_id, actor_name=actor_name), status=HTTPStatus.CREATED)
+            return
+        if path == "/api/airfreight/quotes/parse":
+            self._send_json(service.parse_quotes(value.get("import_id", "")), status=HTTPStatus.CREATED)
+            return
+        correction_match = re.fullmatch(r"/api/airfreight/quotes/([^/]+)/corrections", path)
+        if correction_match:
+            self._send_json(service.correct_quote_field(unquote(correction_match.group(1)), entity_type=value.get("entity_type", "package_group"), entity_id=value.get("entity_id", ""), field_name=value.get("field_name", ""), corrected_value=value.get("corrected_value"), actor_id=actor_id, actor_name=actor_name, reason=value.get("reason", ""), idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("correction-" + uuid.uuid4().hex)))
+            return
+        quote_action = re.fullmatch(r"/api/airfreight/quotes/([^/]+)/(calculate|match|internal|confirm)", path)
+        if quote_action:
+            quote_id = unquote(quote_action.group(1))
+            action = quote_action.group(2)
+            if action == "calculate":
+                self._send_json(service.calculate_chargeable_weight(quote_id))
+            elif action == "match":
+                self._send_json(service.match_rates(quote_id))
+            elif action == "internal":
+                self._send_json(service.generate_internal_calculation(quote_id))
+            else:
+                self._send_json(service.confirm_quote(quote_id, actor_id=actor_id, actor_name=actor_name, reason=value.get("reason", ""), idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("confirm-quote-" + quote_id), sales_adjustment_per_kg=value.get("sales_adjustment_per_kg")))
+            return
+        review_match = re.fullmatch(r"/api/airfreight/rate-cards/([^/]+)/review", path)
+        if review_match:
+            self._send_json(service.publish_rate_card(unquote(review_match.group(1)), actor_id=actor_id, actor_name=actor_name, reason=value.get("reason", ""), idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("publish-" + unquote(review_match.group(1)))))
+            return
+        resolve_match = re.fullmatch(r"/api/airfreight/conflicts/([^/]+)/resolve", path)
+        if resolve_match:
+            self._send_json(service.resolve_conflict(unquote(resolve_match.group(1)), rate_id=value.get("rate_id"), corrected_amount=value.get("corrected_amount"), actor_id=actor_id, actor_name=actor_name, reason=value.get("reason", ""), idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("resolve-" + unquote(resolve_match.group(1)))))
+            return
+        internal_match = re.fullmatch(r"/api/airfreight/internal-rules/([^/]+)/confirm", path)
+        if internal_match:
+            self._send_json(service.confirm_internal_rule(unquote(internal_match.group(1)), actor_id=actor_id, actor_name=actor_name, reason=value.get("reason", ""), idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("confirm-rule-" + unquote(internal_match.group(1)))))
+            return
+        weight_match = re.fullmatch(r"/api/airfreight/rate-cards/([^/]+)/weight-rules/confirm", path)
+        if weight_match:
+            self._send_json(service.confirm_weight_rules(
+                unquote(weight_match.group(1)), boundaries=value.get("boundaries") or {}, actor_id=actor_id,
+                actor_name=actor_name, reason=value.get("reason", ""),
+                idempotency_key=value.get("idempotency_key") or self.headers.get("Idempotency-Key") or ("weight-rules-" + unquote(weight_match.group(1))),
+            ))
+            return
+        raise AirfreightOperationError("not_found", "空运接口不存在", http_status=404)
 
     def _send_attachment(self, data: bytes, content_type: str, filename: str) -> None:
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
         self.wfile.write(data)
@@ -566,6 +798,7 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
         self.wfile.write(data)
@@ -575,18 +808,24 @@ def serve_wecom(
     storage: WecomLocalStorage,
     host: str = "127.0.0.1",
     port: int = 8766,
+    source_analysis_dbs: tuple[Path, ...] | list[Path] | None = None,
+    include_demo_fixtures: bool = True,
 ) -> None:
     storage.initialize()
+    source_paths = tuple(Path(path).resolve() for path in (source_analysis_dbs or [storage.path]))
 
-    # Locate static/wecom.html correctly relative to package root
-    dashboard_path = Path(__file__).resolve().parents[1] / "static" / "wecom.html"
+    # Airfreight is the only default business line.  The old pickup page is
+    # still retained behind /legacy/pickup for read-only compatibility.
+    dashboard_path = Path(__file__).resolve().parents[1] / "static" / "airfreight.html"
     if not dashboard_path.is_file():
         # Fallback search
-        candidate = Path(__file__).resolve().parent / "static" / "wecom.html"
+        candidate = Path(__file__).resolve().parent / "static" / "airfreight.html"
         if candidate.is_file():
             dashboard_path = candidate
 
     dashboard_bytes = dashboard_path.read_bytes() if dashboard_path.is_file() else b"<h1>Dashboard HTML not found</h1>"
+    legacy_path = Path(__file__).resolve().parents[1] / "static" / "wecom.html"
+    legacy_dashboard_bytes = legacy_path.read_bytes() if legacy_path.is_file() else b"<h1>Legacy dashboard not found</h1>"
 
     handler = type(
         "ConfiguredWecomDashboardHandler",
@@ -594,7 +833,10 @@ def serve_wecom(
         {
             "storage": storage,
             "dashboard_bytes": dashboard_bytes,
+            "legacy_dashboard_bytes": legacy_dashboard_bytes,
             "csrf_token": secrets.token_urlsafe(24),
+            "airfreight_source_paths": source_paths,
+            "airfreight_include_demo_fixtures": bool(include_demo_fixtures),
         },
     )
     ThreadingHTTPServer.allow_reuse_address = True
