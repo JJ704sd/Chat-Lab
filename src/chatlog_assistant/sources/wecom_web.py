@@ -21,12 +21,16 @@ from .wecom_pricing import (
     build_price_workbook,
 )
 from .wecom_airfreight import AirfreightOperationError, AirfreightService
+from .wecom_presentation import PresentationService
+from .presentation_samples import sample_catalog, sample_root
+from .pricing_demo import PricingDemo
 
 
 class WecomDashboardHandler(BaseHTTPRequestHandler):
     storage: WecomLocalStorage
     dashboard_bytes: bytes = b""
     legacy_dashboard_bytes: bytes = b""
+    detailed_dashboard_bytes: bytes = b""
     csrf_token: str = secrets.token_urlsafe(24)
     airfreight_source_paths: tuple[Path, ...] = ()
     # This handler serves the local demonstration page.  Its synthetic source
@@ -60,8 +64,18 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_bytes(self.legacy_dashboard_bytes, "text/html; charset=utf-8")
             return
 
+        if parsed.path == "/workbench":
+            self._send_bytes(self.detailed_dashboard_bytes, "text/html; charset=utf-8")
+            return
+
         if parsed.path in ("/", "/wecom", "/index.html"):
             self._send_bytes(self.dashboard_bytes, "text/html; charset=utf-8")
+            return
+
+        if parsed.path in {"/assets/management.css", "/assets/management.js", "/assets/management-prefill.js", "/assets/pdf-reader.js", "/assets/sinotech-logo.png"}:
+            asset = Path(__file__).resolve().parents[1] / "static" / Path(parsed.path).name
+            mime = {".css": "text/css", ".js": "text/javascript", ".png": "image/png"}[asset.suffix]
+            self._send_bytes(asset.read_bytes(), mime + "; charset=utf-8")
             return
 
         if parsed.path == "/favicon.ico":
@@ -355,6 +369,31 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         return None
 
     def _handle_airfreight_get(self, path: str, query: dict[str, list[str]]) -> None:
+        root = self.storage.path.parent / "presentation"
+        if path == "/api/airfreight/presentation/samples":
+            self._send_json({"samples": sample_catalog(root)})
+            return
+        presentation = PresentationService(sample_root(root, query.get("sample", ["default"])[0]))
+        if path == "/api/airfreight/presentation/pricing":
+            self._send_json(PricingDemo(presentation.root).snapshot())
+            return
+        if path == "/api/airfreight/presentation/page":
+            self._send_json(presentation.pdf_page(query.get("sha256", [""])[0], int(query.get("page", ["1"])[0])))
+            return
+        if path == "/api/airfreight/presentation":
+            self._send_json(presentation.snapshot())
+            return
+        if path == "/api/airfreight/presentation/rate.pdf":
+            self._send_bytes(presentation.pdf_bytes(query.get("sha256", [None])[0]), "application/pdf")
+            return
+        draft_match = re.fullmatch(r"/api/airfreight/presentation/drafts/([a-f0-9]{24})\.txt", path)
+        if draft_match:
+            draft_path = presentation.root / "drafts" / (draft_match[1] + ".json")
+            if not draft_path.is_file():
+                raise AirfreightOperationError("draft_missing", "草稿不存在", http_status=404)
+            draft = json.loads(draft_path.read_text(encoding="utf-8"))
+            self._send_attachment(draft["body"].encode("utf-8"), "text/plain; charset=utf-8", "airfreight-draft.txt")
+            return
         # Storage initialization happens once at server startup.  GET handlers
         # must remain read-only: discovering sources, metadata, previews and
         # evidence cannot create demo rows or trigger analysis.
@@ -699,6 +738,29 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "服务器处理失败，请查看本地日志或刷新后重试")
 
     def _handle_airfreight_post(self, path: str, body: bytes, *, actor_id: str | None, actor_name: str | None) -> None:
+        if path in {"/api/airfreight/presentation/pricing/prepare", "/api/airfreight/presentation/pricing/review", "/api/airfreight/presentation/pricing/new-run"}:
+            value = self._request_json(body)
+            pricing = PricingDemo(sample_root(self.storage.path.parent / "presentation", str(value.get("sample", "default"))))
+            if path.endswith("/prepare"):
+                result = pricing.prepare(str(value.get("lane") or ""), str(value.get("revision") or ""))
+            elif path.endswith("/review"):
+                result = pricing.review(value)
+            else:
+                result = pricing.new_run()
+            self._send_json(result)
+            return
+        if path in ("/api/airfreight/presentation/rate", "/api/airfreight/presentation/draft"):
+            value = self._request_json(body)
+            presentation = PresentationService(sample_root(self.storage.path.parent / "presentation", str(value.get("sample", "default"))))
+            if path.endswith("/rate"):
+                try:
+                    data = base64.b64decode(value.get("data_base64", ""), validate=True)
+                except (ValueError, TypeError):
+                    raise AirfreightOperationError("invalid_pdf", "文件内容编码无效")
+                self._send_json(presentation.install_pdf(data, str(value.get("file_name") or "rates.pdf")))
+            else:
+                self._send_json(presentation.create_draft(str(value.get("inquiry_id") or ""), str(value.get("revision") or "")))
+            return
         service = AirfreightService(
             self.storage, source_db_paths=self.airfreight_source_paths or (self.storage.path,),
             include_demo_fixtures=self.airfreight_include_demo_fixtures,
@@ -816,7 +878,7 @@ def serve_wecom(
 
     # Airfreight is the only default business line.  The old pickup page is
     # still retained behind /legacy/pickup for read-only compatibility.
-    dashboard_path = Path(__file__).resolve().parents[1] / "static" / "airfreight.html"
+    dashboard_path = Path(__file__).resolve().parents[1] / "static" / "management.html"
     if not dashboard_path.is_file():
         # Fallback search
         candidate = Path(__file__).resolve().parent / "static" / "airfreight.html"
@@ -826,6 +888,7 @@ def serve_wecom(
     dashboard_bytes = dashboard_path.read_bytes() if dashboard_path.is_file() else b"<h1>Dashboard HTML not found</h1>"
     legacy_path = Path(__file__).resolve().parents[1] / "static" / "wecom.html"
     legacy_dashboard_bytes = legacy_path.read_bytes() if legacy_path.is_file() else b"<h1>Legacy dashboard not found</h1>"
+    detailed_path = Path(__file__).resolve().parents[1] / "static" / "airfreight.html"
 
     handler = type(
         "ConfiguredWecomDashboardHandler",
@@ -834,6 +897,7 @@ def serve_wecom(
             "storage": storage,
             "dashboard_bytes": dashboard_bytes,
             "legacy_dashboard_bytes": legacy_dashboard_bytes,
+            "detailed_dashboard_bytes": detailed_path.read_bytes() if detailed_path.is_file() else b"",
             "csrf_token": secrets.token_urlsafe(24),
             "airfreight_source_paths": source_paths,
             "airfreight_include_demo_fixtures": bool(include_demo_fixtures),

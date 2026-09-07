@@ -1,5 +1,7 @@
 # 空运本地 Demo 操作说明
 
+当前管理层演示已采用双链路人工审核首页，请先阅读 [双链路演示说明](management-demo.md)。本文以下内容描述原详细 A/B 工作台，入口改为 `/workbench`，不作为本次真实聊天与 HKD 价表的默认演示流程。
+
 ## 启动
 
 在项目根目录执行：
@@ -12,7 +14,7 @@ $env:PYTHONPATH=(Join-Path (Get-Location) 'src')
   --host 127.0.0.1 --port 8880
 ```
 
-打开 <http://127.0.0.1:8880/>。`--analysis-db` 是 Demo 的隔离业务库；每个 `--source-analysis-db` 都只是流程 B 可发现的规范化本机来源库，可重复指定。默认页面只展示空运业务；旧揽收页面在 `/legacy/pickup`，用于只读兼容检查。
+打开 <http://127.0.0.1:8880/workbench>。`--analysis-db` 是 Demo 的隔离业务库；每个 `--source-analysis-db` 都只是流程 B 可发现的规范化本机来源库，可重复指定。默认页面只展示空运业务；旧揽收页面在 `/legacy/pickup`，用于只读兼容检查。
 
 ### 准备合法本机来源
 

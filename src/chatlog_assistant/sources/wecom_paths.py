@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 
 
-DEFAULT_WECOM_ROOT = Path(r"C:\Users\Administrator\Documents\WXWork")
-DEFAULT_LOCAL_DATA_ROOT = Path(r"D:\chatlab\data\wecom-local")
+DEFAULT_WECOM_ROOT = (
+    Path.home() / 'Library/Containers/com.tencent.WeWorkMac/Data/Documents/Profiles'
+    if sys.platform == 'darwin' else Path(r"C:\Users\Administrator\Documents\WXWork")
+)
+DEFAULT_LOCAL_DATA_ROOT = Path('data/wecom-local') if sys.platform == 'darwin' else Path(r"D:\chatlab\data\wecom-local")
 DEFAULT_ACCOUNTS_DIR = DEFAULT_LOCAL_DATA_ROOT / "accounts"
 DEFAULT_ANALYSIS_DB = DEFAULT_LOCAL_DATA_ROOT / "analysis.db"
 DEFAULT_EXPORTS_DIR = DEFAULT_LOCAL_DATA_ROOT / "exports"

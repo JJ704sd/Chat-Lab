@@ -109,6 +109,10 @@ uv run chatlog-assistant --source wecom analyze --semantic
 
 ## 企微本地多帐号分析与回填闭环 (`wecom-local`)
 
+管理层 Demo 首页采用 PDF 索价与群聊报价两条链路，统一进入人工审核和本地演示价格表；使用真实 PDF 与提前导入的脱敏聊天，启动及讲解见 [双链路演示说明](docs/management-demo.md)。Mac 与 Windows 使用同一启动脚本，原详细空运工作台保留在 `/workbench`。
+
+Mac 当前已支持原生资料目录发现和基础 AES 运算；原消息库取钥、解密及表结构尚未验证，不能采集真实聊天。`capture-once` / `watch` 会明确返回阻断状态。详见 [Mac 本地采集验证报告](docs/wecom-macos-local-feasibility.md)。
+
 除 WxJava 官方会话存档链路外，支持通过 `wecom-local` 子命令实现已授权本地 WXWork 数据库的快照捕获、解密校验、Protobuf 深度解码、主体识别与双层语义分析闭环：
 
 ```powershell

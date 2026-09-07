@@ -1855,6 +1855,13 @@ class AirfreightService:
     def _parse_pdf(self, data: bytes, artifact: Mapping[str, Any]) -> dict[str, Any]:
         text = data.decode("latin-1", "ignore")
         if "DEMO_ET_PDF" not in text:
+            from .trimanson_rates import legacy_extraction, parse_trimanson_pdf
+            try:
+                real_card = parse_trimanson_pdf(data)
+            except (ValueError, ImportError):
+                real_card = None
+            if real_card:
+                return legacy_extraction(real_card)
             strings = re.findall(r"\(([^()]*)\)\s*Tj", text)
             extracted = " ".join(strings).replace("\\(", "(").replace("\\)", ")")
             if not extracted.strip():

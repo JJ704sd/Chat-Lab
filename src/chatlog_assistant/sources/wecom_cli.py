@@ -222,6 +222,9 @@ def main(argv: list[str] | None = None) -> int:
                     analysis_db_path=args.analysis_db,
                     use_semantic=getattr(args, "semantic", False),
                 )
+                if res.get('retryable') is False:
+                    print(json.dumps(res, ensure_ascii=False, indent=2), flush=True)
+                    return 1
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"[{ts}] Poll result: {res.get('new_messages', 0)} new messages, success={res.get('success')}", flush=True)
             except Exception as exc:
