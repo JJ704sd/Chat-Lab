@@ -50,11 +50,13 @@ def build(root: Path) -> dict:
             candidate_ids=[quote['id']], message_orders=[1,2], title=f"BRU · +300 · {card['currency']} {amount}/kg",
             explanation=f"情景模拟：吉翔通国际作为演示报价方，复述 {card['supplier']} 价表中的 BRU · {card['airline']} · +300 · {card['currency']} {amount}/kg。货量 396.20 kg，使用 +300 档；+500 档仍为 {row['breaks']['+500']}，不混用。交仓及适用期限需人工确认。")])
     (target / 'demo-curation.json').write_bytes(_canonical(policy))
-    # Hide the replaced entry, keeping all of its source files and previous reviews.
-    previous = original / 'demo-curation.json'
-    old = json.loads(previous.read_text(encoding='utf8'))
-    old['hidden'] = True
-    previous.write_bytes(_canonical(old))
+    # Retire other chat examples from the demo without deleting sources or reviews.
+    for retired in ('verified-jixiangtong', 'verified-qisen'):
+        previous = root / 'samples' / retired / 'demo-curation.json'
+        if previous.exists():
+            old = json.loads(previous.read_text(encoding='utf8'))
+            old['hidden'] = True
+            previous.write_bytes(_canonical(old))
     catalog_path = root / 'samples.json'
     catalog = json.loads(catalog_path.read_text(encoding='utf8'))
     catalog['samples'] = [dict(id=key,title=policy['title'],description=policy['description']),
