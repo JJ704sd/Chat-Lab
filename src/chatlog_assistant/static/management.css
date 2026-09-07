@@ -170,3 +170,66 @@ main{padding-top:10px;padding-bottom:12px}
 .review-quote-summary>span,.review-quote-summary>small{font-size:11px;color:var(--text-600)}
 .review-quote-summary>strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .quote-choice-label{display:block;margin-bottom:5px}
+
+/* Review reminders use a separate messenger surface; the pricing workspace stays in place. */
+.review-reminder-entry{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:12px 14px;border:1px solid #d7e6f7;border-radius:9px;background:#f2f7fd}
+.review-reminder-entry strong{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:#285d91}
+.review-reminder-entry strong .icon{width:17px;height:17px}
+.review-reminder-entry small{display:block;margin-top:3px;font-size:11px;color:#647b91}
+.review-reminder-entry .button{border-color:#c3d9f0;color:#2464a8;flex-shrink:0}
+.review-notification{position:fixed;right:24px;bottom:82px;width:min(360px,calc(100vw - 32px));z-index:120;padding:12px 16px 10px;border:1px solid #dbe2e9;border-radius:12px;background:white;color:#28394a;box-shadow:0 10px 35px #203d622b;animation:appear .22s ease-out}
+.review-notification-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.review-notification svg{width:18px;height:18px;vertical-align:middle;color:#337bd0}
+.review-notification-top>span{display:flex;align-items:center;gap:7px;font-size:11px;color:#6b7885}
+.review-notification-top>button{background:none;border:0;font-size:21px;color:#84909d;line-height:1;padding:4px}
+.review-notification strong{font-size:14px;font-weight:600}
+.review-notification p{font-size:12px;line-height:1.6;margin:5px 0;overflow-wrap:anywhere}
+.review-notification small{font-size:11px;color:#74808d}
+.review-notification-open{display:flex;width:100%;justify-content:space-between;align-items:center;padding:9px 0 0;margin-top:9px;border:0;border-top:1px solid #edf0f3;background:none;color:#256fc0;font-size:12px;text-align:left}
+.review-messenger{width:min(820px,calc(100vw - 32px));height:min(660px,calc(100svh - 48px));max-height:calc(100svh - 48px);padding:0;overflow:hidden;border:1px solid #cdd4db;border-radius:12px;color:#263442;background:#f4f5f6;box-shadow:0 22px 80px #1229414d}
+.review-messenger::backdrop{background:#1a283e66}
+.review-messenger-frame{display:grid;grid-template-columns:68px minmax(0,1fr);height:100%;min-height:0}
+.review-messenger-rail{display:flex;flex-direction:column;align-items:center;gap:8px;background:#e2e7ed;border-right:1px solid #d6dde4;padding:20px 10px;color:#377aca;font-size:11px}
+.review-messenger-app{display:grid;place-items:center;width:35px;height:35px;border-radius:9px;color:white;background:#3984d7;font-size:17px;margin-bottom:22px}
+.review-messenger-rail>svg{width:24px;height:24px}
+.review-messenger-chat{display:flex;flex-direction:column;min-width:0;min-height:0}
+.review-messenger-header{padding:14px 20px;border-bottom:1px solid #e0e4e8;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;background:#f8f9fa}
+.review-messenger-header h3{font-size:16px;font-weight:600;margin:0;color:#263442}
+.review-messenger-header p{font-size:11px;color:#7a8794;margin:3px 0 0}
+.review-messenger-header p span{border-left:1px solid #d8dfe6;padding-left:8px;margin-left:8px}
+.review-messenger-header>button{font-size:24px;line-height:1.2;padding:4px 6px;border:0;background:none;color:#73808d}
+.review-messenger-messages{overflow:auto;flex:1;min-height:0;padding:16px 22px 22px;overscroll-behavior:contain}
+.review-messenger-time{text-align:center;font-size:11px;color:#909ba6;margin:0 0 18px}
+.review-messenger-message{display:flex;align-items:flex-start;gap:10px;margin-bottom:18px}
+.review-messenger-avatar{width:36px;height:36px;flex-shrink:0;display:grid;place-items:center;background:#4b90d9;color:white;border-radius:6px;font-size:13px}
+.review-messenger-avatar svg{width:24px;height:24px}
+.review-messenger-content{max-width:calc(100% - 46px);min-width:0;width:420px}
+.review-messenger-name{display:block;color:#7b8793;font-size:11px;margin-bottom:6px}
+.review-messenger-bubble{display:inline-block;background:white;border:1px solid #e1e5e9;border-radius:6px;margin:0 0 10px;padding:9px 12px;font-size:13px;line-height:1.65;color:#344251;overflow-wrap:anywhere}
+.review-message-card{border:1px solid #dce2e8;border-radius:8px;background:white;overflow:hidden;padding:14px 16px 0}
+.review-message-card-kind{display:flex;align-items:center;gap:6px;color:#768597;font-size:11px}
+.review-message-card-kind svg{width:17px;height:17px;color:#397bcc}
+.review-message-card-kind b{font-size:10px;font-weight:400;color:#b07020;background:#fff5e7;padding:2px 6px;border-radius:4px;margin-left:auto}
+.review-message-card h4{font-size:17px;line-height:1.4;font-weight:600;margin:10px 0 12px;color:#253c54}
+.review-message-card dl{margin:0;font-size:12px;line-height:1.6}
+.review-message-card dl>div{display:flex;gap:12px;margin:5px 0}
+.review-message-card dt{color:#8a959f;flex:0 0 48px}
+.review-message-card dd{margin:0;min-width:0;color:#3b4c5d;overflow-wrap:anywhere}
+.review-message-card-summary{display:grid;gap:4px;padding:10px 12px;margin:12px 0;border-radius:6px;background:#f3f7fc}
+.review-message-card-summary strong{font-size:14px;font-weight:500;color:#2e5a87}
+.review-message-card-summary span{font-size:13px;color:#344e69}
+.review-message-card-summary small{font-size:11px;color:#728396;line-height:1.6}
+.review-message-card-warning{font-size:11px;color:#987444;line-height:1.7;margin:10px 0 12px}
+.review-message-card>button{display:flex;align-items:center;justify-content:space-between;width:calc(100% + 32px);margin:0 -16px;padding:12px 16px;border:0;border-top:1px solid #e6edf4;background:white;color:#2d77c6;font-size:13px;text-align:left}
+.review-message-card>button:hover{background:#f1f7fe}
+.review-messenger-receipt{display:block;margin-top:5px;color:#8b99a8;font-size:10px}
+.reviewer-reply{flex-direction:row-reverse}
+.reviewer-reply .review-messenger-avatar{background:#70a98f}
+.reviewer-reply .review-messenger-content{text-align:right}
+.reviewer-reply .review-messenger-bubble{background:#dcefe6;border-color:#c9e3d6;margin-bottom:4px}
+.reviewer-reply small{display:block;color:#8996a3;font-size:10px}
+.review-messenger-compose{flex-shrink:0;padding:10px 20px;background:#fafbfc;border-top:1px solid #e0e5ea;display:flex;align-items:center;gap:14px;color:#8d98a4;font-size:11px}
+.review-messenger-compose>span:first-child{font-size:19px;color:#9ba7b3}
+.review-messenger-note{flex-shrink:0;text-align:center;color:#95a0ab;background:#fafbfc;font-size:10px;padding:0 12px 9px}
+@media(max-width:760px){.review-reminder-entry{flex-wrap:wrap}.review-notification{right:16px;bottom:76px}.review-messenger{width:calc(100vw - 16px);height:calc(100svh - 24px);max-height:calc(100svh - 24px)}.review-messenger-frame{grid-template-columns:minmax(0,1fr)}.review-messenger-rail{display:none}.review-messenger-header{padding:12px 14px}.review-messenger-messages{padding:14px 12px}.review-messenger-content{width:100%;max-width:calc(100% - 46px)}.review-message-card{padding:12px 12px 0}.review-message-card>button{width:calc(100% + 24px);margin:0 -12px;padding:12px}.review-messenger-compose{padding:8px 12px}}
+@media(prefers-reduced-motion:reduce){.review-notification{animation:none}}
