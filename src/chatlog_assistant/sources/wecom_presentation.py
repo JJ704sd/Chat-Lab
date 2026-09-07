@@ -160,14 +160,21 @@ class PresentationService:
             snapshots = verification.get("snapshots") or []
             local_verified = (mode == "wecom_local_snapshot" and verification.get("verified") is True
                               and bool(snapshots) and all(s.get("verified") is True for s in snapshots))
-            if source.get("anonymized") is not True or not (mode == "wecom_ui_observation" or local_verified):
+            scenario = source.get('scenario') or {}
+            scenario_ready = (mode == 'demo_scenario' and card is not None and
+                scenario.get('rate_source_sha256') == card['source_sha256'] and
+                any(row['destination'] == scenario.get('destination') and
+                    row['breaks'].get(scenario.get('weight_break')) == scenario.get('amount')
+                    for row in card['rows']) and scenario.get('airline') == card['airline'] and
+                scenario.get('currency') == card['currency'])
+            if source.get("anonymized") is not True or not (mode == "wecom_ui_observation" or local_verified or scenario_ready):
                 raise AirfreightOperationError("source_not_ready", "请导入脱敏的界面观察样本或已校验的本机数据库样本")
         messages = source.get("messages", []) if source else []
         inquiries = extract_inquiries(messages)
         revision = hashlib.sha256(_canonical({"source": source, "card": card})).hexdigest()
         for item in inquiries:
             item["pdf_match"] = match_pdf_rate(card, item["destination"], item["preliminary_weight"]["chargeable_kg"], source["message_date"]) if card else {"status": "missing_card", "reason": "尚未导入价表"}
-            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", r.get("reply_body", r["body"]), re.I) and re.search(r"\d", r.get("reply_body", r["body"]))]
+            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:ET|TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", r.get("reply_body", r["body"]), re.I) and re.search(r"\d", r.get("reply_body", r["body"]))]
             item["price_responses"] = price_responses
             item["pending"] += ["供应商回复的币种与计价口径", "附加费、舱位、有效期及销售加价"]
             if any(r["association"] == "adjacent_context" for r in price_responses):

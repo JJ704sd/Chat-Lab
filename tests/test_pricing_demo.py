@@ -14,7 +14,7 @@ from chatlog_assistant.sources.wecom_airfreight import AirfreightOperationError
 
 class PricingReviewTests(unittest.TestCase):
     def test_digit_airline_codes_preserve_weight_tier_and_decimal_price(self):
-        for airline, amount in [('3U', '28'), ('C6', '19.5')]:
+        for airline, amount in [('3U', '28'), ('C6', '19.5'), ('ET', '40')]:
             with self.subTest(airline=airline):
                 self.source['messages'] = self.source['messages'][:2]
                 self.source['messages'][1]['body'] = f'{airline} +100托 {amount}/kg交成都'
@@ -22,6 +22,27 @@ class PricingReviewTests(unittest.TestCase):
                 values = chat_candidates(self.service.sources.snapshot())
                 self.assertEqual([(c['airline'], c['weight_break'], c['amount']) for c in values],
                                  [(airline, '+100', amount)])
+
+    def test_pdf_linked_scenario_matches_tier_and_rejects_changed_source(self):
+        self.card['rows'][0]['breaks']['+300'] = '40'
+        self.source['source_mode'] = 'demo_scenario'
+        self.source['scenario'] = dict(rate_source_sha256='a' * 64, destination='BRU',
+            weight_break='+300', amount='40', airline='ET', currency='HKD', origin='Demo warehouse')
+        inquiry = 'BRU 396.20kg 1.75cbm'
+        self.source['messages'] = [
+            dict(capture_order=1, sender='Sales', role='sales', body=inquiry),
+            dict(capture_order=2, sender='Supplier', role='supplier', body='ET +300 HKD 40/kg', quoted_text=inquiry, unit='KG')]
+        self.write_sources()
+        candidate = self.prepare('chat')['candidates'][0]
+        self.assertEqual(tuple(candidate[k] for k in ('destination', 'weight_break', 'amount', 'airline', 'currency', 'unit')),
+                         ('BRU', '+300', '40', 'ET', 'HKD', 'KG'))
+        self.assertEqual(candidate['origin'], 'Demo warehouse')
+        self.assertIn('情景模拟', candidate['scope'])
+        self.assertEqual(self.card['rows'][0]['breaks']['+500'], '39')
+        self.card['source_sha256'] = 'b' * 64
+        self.write_sources()
+        with self.assertRaises(AirfreightOperationError):
+            self.service.sources.snapshot()
 
     def test_explicit_quote_body_is_not_parsed_as_a_new_airline_price(self):
         reply = self.source['messages'][1]

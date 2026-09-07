@@ -81,7 +81,7 @@ def chat_candidates(snapshot: dict) -> list[dict]:
     for inquiry in snapshot["inquiries"]:
         for reply in inquiry["price_responses"]:
             body = reply.get("reply_body", reply["body"])
-            segments = list(re.finditer(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", body, re.I))
+            segments = list(re.finditer(r"(?<![A-Z])(?:ET|TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", body, re.I))
             for i, match in enumerate(segments):
                 segment = body[match.end():segments[i + 1].start() if i + 1 < len(segments) else len(body)]
                 if re.search(r"没做|不接|无价|不收", segment):
@@ -105,19 +105,19 @@ def chat_candidates(snapshot: dict) -> list[dict]:
                     issues.append("原回复包含多个价格条件，请人工拆分或明确当前价格")
                 result.append({
                     "id": "chat-" + _digest([source["message_date"], inquiry["id"], reply, i]),
-                    "lane": "chat", "supplier": reply["sender"], "origin": origin,
+                    "lane": "chat", "supplier": reply["sender"], "origin": ((source.get('scenario') or {}).get('origin', origin) if source.get('source_mode') == 'demo_scenario' else origin),
                     "destination": inquiry["destination"], "airline": match[0].upper(),
                     "weight_break": "+" + tier[1] if tier else "N" if "N价" in segment else "",
                     "amount": value[1] if value and not complex_price else "", "currency": currency,
                     "unit": reply.get("unit") or "", "conditions": body,
                     "valid_from": source["message_date"], "validity": "",
-                    "scope": f"仅本票询价 · {inquiry['gross_kg']} kg / {inquiry['volume_cbm']} CBM",
+                    "scope": ('情景模拟 · ' if source['source_mode']=='demo_scenario' else '') + f"仅本票询价 · {inquiry['gross_kg']} kg / {inquiry['volume_cbm']} CBM",
                     "scope_key": _digest([source.get("group_alias"), inquiry["sender"], inquiry["original"]]),
                     "source_order": source["message_date"] + f"/{reply['capture_order']:08d}",
                     "issues": issues, "inquiry_id": inquiry["id"],
                     "evidence": {"kind": "chat", "date": source["message_date"],
                         "source_mode": source["source_mode"], "group": source.get("group_alias", "航线沟通群"),
-                        "association": reply["association_label"], "reply_order": reply["capture_order"],
+                        "association": '情景模拟中的引用' if source['source_mode']=='demo_scenario' else reply["association_label"], "reply_order": reply["capture_order"],
                         "messages": [m for m in source["messages"] if m["capture_order"] in
                             set(inquiry["message_orders"] + [reply["capture_order"]])]},
                 })

@@ -21,7 +21,7 @@
       suppliers:unique(rows.map(c=>c.supplier)).join('、'),
       destinationCount:unique(rows.map(c=>c.destination)).length,
       title:pdf?'供应商价表待审核':'询价报价待审核',
-      source:pdf?'供应商 PDF 价表':'当前询价 · 供应商回复',
+      source:pdf?'供应商 PDF 价表':context.scenario?'PDF 联动情景模拟':'当前询价 · 供应商回复',
       summary:pdf?`${rows.length} 条价格 · ${unique(rows.map(c=>c.destination)).length} 个目的港`:
         `${target.destination} · ${target.airline} · ${target.weight_break || '重量档待确认'}`,
       price:pdf?'':`${target.currency || '币种待确认'} ${target.amount || '价格待确认'} / ${target.unit || '单位待确认'}`,
