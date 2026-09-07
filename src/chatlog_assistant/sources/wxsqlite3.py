@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import struct
 
-from .crypto_win import aes_cbc_decrypt, aes_cbc_encrypt
+from .crypto_native import aes_cbc_decrypt, aes_cbc_encrypt
 
 
 PAGE_SIZE = 4096

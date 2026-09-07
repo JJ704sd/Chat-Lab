@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -78,8 +79,8 @@ class WecomPagekeyTests(unittest.TestCase):
 
 class Wxsqlite3Tests(unittest.TestCase):
     def test_page_round_trip_and_verify(self) -> None:
-        if os.name != "nt":
-            self.skipTest("Windows CNG AES is required")
+        if os.name != "nt" and sys.platform != 'darwin':
+            self.skipTest("A Windows or macOS native AES backend is required")
         from chatlog_assistant.sources.wxsqlite3 import decrypt_page, encrypt_page, verify_key
 
         with tempfile.TemporaryDirectory() as directory:

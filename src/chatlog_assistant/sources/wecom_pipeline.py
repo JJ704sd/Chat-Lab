@@ -30,6 +30,7 @@ from .wecom_subject import WecomSubjectClassifier
 from .wecom_semantic import WecomSemanticAnalyzer, WecomSemanticSettings
 from ..secrets import KeyRing, KeyRecord
 from .windows_memory import zero_secret
+from .wecom_macos import discover_macos_profiles
 
 
 def import_normalized_jsonl(
@@ -86,12 +87,12 @@ def import_normalized_jsonl(
 
 def discover_wecom_accounts(wecom_root: Path | str | None = None) -> list[dict[str, Any]]:
     root = Path(wecom_root) if wecom_root else DEFAULT_WECOM_ROOT
-    accounts = []
+    accounts = discover_macos_profiles(root)
     if not root.is_dir():
         return accounts
 
     for item in sorted(root.iterdir()):
-        if not item.is_dir() or not item.name.isdigit():
+        if not item.is_dir() or not item.name.isdigit() or (item / 'Messages1/Info.db').is_file():
             continue
         data_dir = item / "Data"
         has_msg = (data_dir / "message.db").is_file()
@@ -211,6 +212,14 @@ def run_single_capture(
     """Performs consistent snapshot, decrypts with DPAPI saved key, parses, and updates storage."""
     root = Path(wecom_root) if wecom_root else DEFAULT_WECOM_ROOT
     account_dir = root / account_id
+    if (account_dir / 'Messages1/Info.db').is_file():
+        # Stop before creating analysis databases, snapshot files or a DPAPI store.
+        return {
+            'success': False, 'platform': 'macos', 'account_id': account_id,
+            'error_code': 'macos_capture_not_ready', 'retryable': False,
+            'error': 'Mac 本地数据库已定位，但密钥获取和原消息表结构尚未验证，未导入任何消息。',
+            'new_messages': 0,
+        }
     data_dir = account_dir / "Data"
 
     if not data_dir.is_dir():
