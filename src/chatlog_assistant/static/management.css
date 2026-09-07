@@ -165,3 +165,8 @@ main{padding-top:10px;padding-bottom:12px}
 .reviewer i{background:#f0e2df}
 @media(max-width:1000px){.topbar:after{width:64px}.brand-logo{width:186px}.brand-heading h1{font-size:14px;padding-left:4px}}
 @media(max-width:760px){.topbar:after{width:55px}.brand-logo{width:176px}}
+
+.review-quote-summary{padding:10px 12px;margin-bottom:12px;border:1px solid var(--line-200);border-radius:8px;background:var(--surface-50);display:grid;gap:3px}
+.review-quote-summary>span,.review-quote-summary>small{font-size:11px;color:var(--text-600)}
+.review-quote-summary>strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.quote-choice-label{display:block;margin-bottom:5px}
