@@ -72,9 +72,9 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_bytes(self.dashboard_bytes, "text/html; charset=utf-8")
             return
 
-        if parsed.path in {"/assets/management.css", "/assets/management.js", "/assets/management-prefill.js", "/assets/pdf-reader.js"}:
+        if parsed.path in {"/assets/management.css", "/assets/management.js", "/assets/management-prefill.js", "/assets/pdf-reader.js", "/assets/sinotech-logo.png"}:
             asset = Path(__file__).resolve().parents[1] / "static" / Path(parsed.path).name
-            mime = "text/css" if asset.suffix == ".css" else "text/javascript"
+            mime = {".css": "text/css", ".js": "text/javascript", ".png": "image/png"}[asset.suffix]
             self._send_bytes(asset.read_bytes(), mime + "; charset=utf-8")
             return
 

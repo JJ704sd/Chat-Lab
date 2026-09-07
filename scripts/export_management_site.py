@@ -31,7 +31,7 @@ def export(root: Path, destination: Path) -> dict:
     public = destination / 'public'
     (public / 'assets').mkdir(parents=True, exist_ok=True)
     static = PROJECT / 'src/chatlog_assistant/static'
-    for name in ('management.js', 'management.css', 'management-prefill.js', 'pdf-reader.js', 'management-hosted.js'):
+    for name in ('management.js', 'management.css', 'management-prefill.js', 'pdf-reader.js', 'management-hosted.js', 'sinotech-logo.png'):
         shutil.copyfile(static / name, public / 'assets' / name)
     html = (static / 'management.html').read_text(encoding='utf-8')
     html = html.replace('<script src="/assets/management-prefill.js"', '<script src="/assets/management-hosted.js" defer></script>\n<script src="/assets/management-prefill.js"')

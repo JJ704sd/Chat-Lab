@@ -77,3 +77,65 @@ main,footer{min-width:0}
 @media(max-width:760px){main{overflow-y:auto}.workspace:not(.full){min-height:360px;flex-shrink:0}.sample-picker label,.chat-context-controls label{flex-direction:row;align-items:center}.sample-picker label{font-size:11px}.chat-context-controls{padding:8px 12px}.chat-context-controls label{font-size:11px}}
 
 .case-explanation{margin-top:8px}.case-explanation summary{font-size:12px;font-weight:600;cursor:pointer;color:#753134}.case-explanation p{max-height:100px;overflow:auto;margin-top:6px}.chat-context-controls>.case-explanation+small{margin:6px 0 0;display:block}
+
+/* Keep the working area dominant, including laptops at increased display scale. */
+.app{min-height:540px}
+.shell{grid-template-rows:56px minmax(0,1fr) 58px}
+.rail{padding-top:66px}
+.topbar>.brand-heading{align-items:center;gap:18px}
+.brand-logo{display:block;width:210px;height:auto;filter:brightness(1.08) contrast(1.12)}
+.brand-heading h1{border-left:1px solid var(--line-200);padding-left:18px;white-space:nowrap}
+main{padding-top:10px;padding-bottom:12px}
+.headline{min-height:46px;margin-bottom:8px;flex-shrink:0}
+.headline .eyebrow,.headline p{display:none}
+.headline h2{font-size:20px;line-height:28px}
+.lane-switch button{padding:7px 12px}
+.sample-picker{display:flex;align-items:center;gap:18px;padding:6px 12px;margin-bottom:8px;border-radius:8px;position:relative;z-index:3}
+.sample-picker label{flex:1;font-size:12px;gap:12px}
+.sample-picker select{height:32px;padding:4px 8px}
+.sample-picker details{flex-shrink:0}
+.sample-picker summary{margin:0;list-style:none;padding:6px;color:var(--text-600)}
+.sample-picker summary:after{content:' ⓘ'}
+.sample-picker details[open]>p{position:absolute;right:0;top:100%;max-width:520px;margin:6px 0 0;padding:14px 16px;background:white;border:1px solid var(--line-200);border-radius:8px;box-shadow:0 8px 24px #38252218;z-index:4}
+.stepper{flex-shrink:0;padding:8px 14px;gap:12px;margin-bottom:10px;border-radius:8px}
+.step .step-number{width:25px;height:25px}
+.step small{display:none}
+.workspace{gap:16px}
+.panel-head{padding:10px 16px;min-height:42px}
+.panel-body{padding:16px}
+.panel-foot{padding:7px 16px}
+.chat-input{height:32px;flex-shrink:0}
+.chat-scroll{padding:16px 20px}
+.chat-date{margin-bottom:14px}
+.chat-msg{margin-bottom:18px}
+.agent-intro{margin-bottom:14px}
+.metrics{margin:12px 0 14px}
+.summary-card{margin-top:12px;padding:14px}
+.footer-context span:not(.status-icon){margin-top:1px}
+@media(min-width:761px) and (max-height:760px){
+ .shell{grid-template-rows:50px minmax(0,1fr) 52px}
+ .headline{min-height:38px;margin-bottom:6px}
+ .headline h2{font-size:18px}
+ .sample-picker{margin-bottom:6px}
+ .stepper{padding:6px 12px;margin-bottom:8px}
+ .panel-head{min-height:38px;padding:8px 14px}
+ .brand-logo{width:190px}
+ .top-actions{gap:10px}
+}
+@media(max-width:1000px){.brand-logo{width:170px}.topbar>.brand-heading{gap:10px}.brand-heading h1{font-size:14px;padding-left:10px}.sample-picker summary{font-size:10px}.headline{flex-wrap:nowrap}.headline h2{font-size:17px}.lane-switch button{font-size:11px;padding:7px 9px}}
+@media(max-width:760px){
+ .app{min-height:100svh}
+ .shell{grid-template-rows:54px minmax(0,1fr) auto}
+ .rail{padding-top:60px}
+ .brand-logo{width:150px}
+ .brand-heading h1{display:none}
+ .headline{flex-wrap:wrap;gap:8px;margin-bottom:8px}
+ .headline h2{font-size:17px}
+ .sample-picker{gap:6px;padding:6px 8px;flex-wrap:wrap}
+ .sample-picker label{flex-basis:100%}
+ .sample-picker details{margin-left:auto}
+ .sample-picker details[open]>p{max-width:100%}
+ .workspace>.panel{min-height:400px}
+ .workspace>.panel.wecom{min-height:400px;max-height:540px}
+ footer{padding:10px 12px}
+}

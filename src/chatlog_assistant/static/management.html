@@ -11,7 +11,6 @@
 <body>
 <div class="app">
  <nav class="rail" aria-label="主导航">
-  <div class="brandmark" aria-label="中技">ZJ<span>中技</span></div>
   <button class="nav-item active" data-view="demo" title="双链路演示"><span data-icon="workflow"></span><span>演示</span></button>
   <button class="nav-item" data-view="pending" title="待审核价格"><span data-icon="checklist"></span><span>待审核</span><b id="pendingBadge">0</b></button>
   <button class="nav-item" data-view="library" title="已生效价格表"><span data-icon="table"></span><span>价格表</span></button>
@@ -20,7 +19,7 @@
   <div class="rail-foot">AI & DIGITAL</div>
  </nav>
  <div class="shell">
-  <header class="topbar"><div><h1>智能运价管理</h1><span class="top-sub">供应商报价协同工作台</span></div><div class="top-actions"><span class="tag neutral">本地演示库</span><span class="reviewer"><i>审</i>价格审核负责人</span><button class="text-button" data-action="new-run">新一轮演示</button></div></header>
+  <header class="topbar"><div class="brand-heading"><img class="brand-logo" src="/assets/sinotech-logo.png" alt="Sinotech 中技物流" width="520" height="147"><h1>智能运价管理</h1></div><div class="top-actions"><span class="tag neutral">本地演示库</span><span class="reviewer"><i>审</i>价格审核负责人</span><button class="text-button" data-action="new-run">新一轮演示</button></div></header>
   <main>
    <section class="headline"><div><div class="eyebrow">AIRFREIGHT PRICING</div><h2 id="pageTitle">两种报价来源，一张可信价格表</h2><p id="pageSubtitle">Agent 整理，人工确认，价格与依据一起留存。</p></div><div class="lane-switch" role="tablist" aria-label="报价来源"><button role="tab" data-lane="pdf"><span data-icon="file"></span>供应商提供价表</button><button role="tab" data-lane="chat"><span data-icon="chat"></span>群聊询价报价</button></div></section>
    <div id="stepper" class="stepper" aria-label="演示进度"></div>
