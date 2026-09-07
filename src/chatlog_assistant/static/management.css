@@ -233,3 +233,5 @@ main{padding-top:10px;padding-bottom:12px}
 .review-messenger-note{flex-shrink:0;text-align:center;color:#95a0ab;background:#fafbfc;font-size:10px;padding:0 12px 9px}
 @media(max-width:760px){.review-reminder-entry{flex-wrap:wrap}.review-notification{right:16px;bottom:76px}.review-messenger{width:calc(100vw - 16px);height:calc(100svh - 24px);max-height:calc(100svh - 24px)}.review-messenger-frame{grid-template-columns:minmax(0,1fr)}.review-messenger-rail{display:none}.review-messenger-header{padding:12px 14px}.review-messenger-messages{padding:14px 12px}.review-messenger-content{width:100%;max-width:calc(100% - 46px)}.review-message-card{padding:12px 12px 0}.review-message-card>button{width:calc(100% + 24px);margin:0 -12px;padding:12px}.review-messenger-compose{padding:8px 12px}}
 @media(prefers-reduced-motion:reduce){.review-notification{animation:none}}
+
+.sample-current{flex:1;min-width:0;line-height:20px;padding:6px 0;overflow-wrap:anywhere;color:var(--text-600)}
