@@ -81,7 +81,7 @@ def chat_candidates(snapshot: dict) -> list[dict]:
     for inquiry in snapshot["inquiries"]:
         for reply in inquiry["price_responses"]:
             body = reply.get("reply_body", reply["body"])
-            segments = list(re.finditer(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3)(?![A-Z])", body, re.I))
+            segments = list(re.finditer(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", body, re.I))
             for i, match in enumerate(segments):
                 segment = body[match.end():segments[i + 1].start() if i + 1 < len(segments) else len(body)]
                 if re.search(r"没做|不接|无价|不收", segment):

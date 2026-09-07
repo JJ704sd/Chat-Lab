@@ -13,6 +13,16 @@ from chatlog_assistant.sources.wecom_airfreight import AirfreightOperationError
 
 
 class PricingReviewTests(unittest.TestCase):
+    def test_digit_airline_codes_preserve_weight_tier_and_decimal_price(self):
+        for airline, amount in [('3U', '28'), ('C6', '19.5')]:
+            with self.subTest(airline=airline):
+                self.source['messages'] = self.source['messages'][:2]
+                self.source['messages'][1]['body'] = f'{airline} +100托 {amount}/kg交成都'
+                self.write_sources()
+                values = chat_candidates(self.service.sources.snapshot())
+                self.assertEqual([(c['airline'], c['weight_break'], c['amount']) for c in values],
+                                 [(airline, '+100', amount)])
+
     def test_explicit_quote_body_is_not_parsed_as_a_new_airline_price(self):
         reply = self.source['messages'][1]
         reply['body'] = '旧询价 TK +500 99；供应商本次 O3 +500 28'

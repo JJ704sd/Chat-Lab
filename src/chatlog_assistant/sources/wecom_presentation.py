@@ -167,7 +167,7 @@ class PresentationService:
         revision = hashlib.sha256(_canonical({"source": source, "card": card})).hexdigest()
         for item in inquiries:
             item["pdf_match"] = match_pdf_rate(card, item["destination"], item["preliminary_weight"]["chargeable_kg"], source["message_date"]) if card else {"status": "missing_card", "reason": "尚未导入价表"}
-            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3)(?![A-Z])", r.get("reply_body", r["body"]), re.I) and re.search(r"\d", r.get("reply_body", r["body"]))]
+            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3|3U|C6)(?![A-Z])", r.get("reply_body", r["body"]), re.I) and re.search(r"\d", r.get("reply_body", r["body"]))]
             item["price_responses"] = price_responses
             item["pending"] += ["供应商回复的币种与计价口径", "附加费、舱位、有效期及销售加价"]
             if any(r["association"] == "adjacent_context" for r in price_responses):
