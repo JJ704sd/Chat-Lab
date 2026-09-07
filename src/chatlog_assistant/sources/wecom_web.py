@@ -22,6 +22,7 @@ from .wecom_pricing import (
 )
 from .wecom_airfreight import AirfreightOperationError, AirfreightService
 from .wecom_presentation import PresentationService
+from .presentation_samples import sample_catalog, sample_root
 from .pricing_demo import PricingDemo
 
 
@@ -71,7 +72,7 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_bytes(self.dashboard_bytes, "text/html; charset=utf-8")
             return
 
-        if parsed.path in {"/assets/management.css", "/assets/management.js", "/assets/management-prefill.js"}:
+        if parsed.path in {"/assets/management.css", "/assets/management.js", "/assets/management-prefill.js", "/assets/pdf-reader.js"}:
             asset = Path(__file__).resolve().parents[1] / "static" / Path(parsed.path).name
             mime = "text/css" if asset.suffix == ".css" else "text/javascript"
             self._send_bytes(asset.read_bytes(), mime + "; charset=utf-8")
@@ -368,7 +369,11 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
         return None
 
     def _handle_airfreight_get(self, path: str, query: dict[str, list[str]]) -> None:
-        presentation = PresentationService(self.storage.path.parent / "presentation")
+        root = self.storage.path.parent / "presentation"
+        if path == "/api/airfreight/presentation/samples":
+            self._send_json({"samples": sample_catalog(root)})
+            return
+        presentation = PresentationService(sample_root(root, query.get("sample", ["default"])[0]))
         if path == "/api/airfreight/presentation/pricing":
             self._send_json(PricingDemo(presentation.root).snapshot())
             return
@@ -386,7 +391,7 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             draft_path = presentation.root / "drafts" / (draft_match[1] + ".json")
             if not draft_path.is_file():
                 raise AirfreightOperationError("draft_missing", "草稿不存在", http_status=404)
-            draft = json.loads(draft_path.read_text())
+            draft = json.loads(draft_path.read_text(encoding="utf-8"))
             self._send_attachment(draft["body"].encode("utf-8"), "text/plain; charset=utf-8", "airfreight-draft.txt")
             return
         # Storage initialization happens once at server startup.  GET handlers
@@ -734,8 +739,8 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
 
     def _handle_airfreight_post(self, path: str, body: bytes, *, actor_id: str | None, actor_name: str | None) -> None:
         if path in {"/api/airfreight/presentation/pricing/prepare", "/api/airfreight/presentation/pricing/review", "/api/airfreight/presentation/pricing/new-run"}:
-            pricing = PricingDemo(self.storage.path.parent / "presentation")
             value = self._request_json(body)
+            pricing = PricingDemo(sample_root(self.storage.path.parent / "presentation", str(value.get("sample", "default"))))
             if path.endswith("/prepare"):
                 result = pricing.prepare(str(value.get("lane") or ""), str(value.get("revision") or ""))
             elif path.endswith("/review"):
@@ -745,8 +750,8 @@ class WecomDashboardHandler(BaseHTTPRequestHandler):
             self._send_json(result)
             return
         if path in ("/api/airfreight/presentation/rate", "/api/airfreight/presentation/draft"):
-            presentation = PresentationService(self.storage.path.parent / "presentation")
             value = self._request_json(body)
+            presentation = PresentationService(sample_root(self.storage.path.parent / "presentation", str(value.get("sample", "default"))))
             if path.endswith("/rate"):
                 try:
                     data = base64.b64decode(value.get("data_base64", ""), validate=True)

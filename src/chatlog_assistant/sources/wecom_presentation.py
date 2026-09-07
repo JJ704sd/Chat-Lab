@@ -46,8 +46,10 @@ def extract_inquiries(messages: list[dict]) -> list[dict]:
         if message.get("role") != "sales":
             continue
         # These are three-letter destination tokens, not two-character airlines.
-        destinations = list(dict.fromkeys(re.findall(r"(?<![A-Z])([A-Z]{3})(?![A-Z])", text)))
-        destinations = [d for d in destinations if d not in {"CBM", "KGS", "PAL", "CAN", "CTN", "TNS", "TOO"}]
+        months = r"(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)"
+        destination_text = re.sub(r"\b\d{1,2}[\s/-]+" + months + r"\b|\b" + months + r"[\s/-]+\d{1,4}\b", " ", text)
+        destinations = list(dict.fromkeys(re.findall(r"(?<![A-Z])([A-Z]{3})(?![A-Z])", destination_text)))
+        destinations = [d for d in destinations if d not in {"CBM", "KGS", "PAL", "PLT", "PKG", "PCS", "CAN", "CTN", "TNS", "TOO"}]
         if not destinations:
             continue
         gross = _number(r"(?:总重(?:为)?|总|共)\s*(\d+(?:\.\d+)?)\s*(?:KG|公斤)?", text)
@@ -128,7 +130,7 @@ class PresentationService:
 
     def rate_card(self) -> dict | None:
         path = self.root / "active-rate.json"
-        return json.loads(path.read_text()) if path.is_file() else None
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
     def pdf_bytes(self, digest: str | None = None) -> bytes:
         card = self.rate_card()
@@ -150,16 +152,22 @@ class PresentationService:
 
     def snapshot(self) -> dict:
         path = self.root / "source-chat.json"
-        source = json.loads(path.read_text()) if path.is_file() else None
+        source = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
         card = self.rate_card()
-        if source is not None and (source.get("source_mode") != "wecom_ui_observation" or source.get("anonymized") is not True):
-            raise AirfreightOperationError("source_not_ready", "本次演示需要提前导入并脱敏的界面观察样本")
+        if source is not None:
+            mode = source.get("source_mode")
+            verification = source.get("verification") or {}
+            snapshots = verification.get("snapshots") or []
+            local_verified = (mode == "wecom_local_snapshot" and verification.get("verified") is True
+                              and bool(snapshots) and all(s.get("verified") is True for s in snapshots))
+            if source.get("anonymized") is not True or not (mode == "wecom_ui_observation" or local_verified):
+                raise AirfreightOperationError("source_not_ready", "请导入脱敏的界面观察样本或已校验的本机数据库样本")
         messages = source.get("messages", []) if source else []
         inquiries = extract_inquiries(messages)
         revision = hashlib.sha256(_canonical({"source": source, "card": card})).hexdigest()
         for item in inquiries:
             item["pdf_match"] = match_pdf_rate(card, item["destination"], item["preliminary_weight"]["chargeable_kg"], source["message_date"]) if card else {"status": "missing_card", "reason": "尚未导入价表"}
-            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3)(?![A-Z])", r["body"], re.I) and re.search(r"\d", r["body"])]
+            price_responses = [r for r in item["responses"] if re.search(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3)(?![A-Z])", r.get("reply_body", r["body"]), re.I) and re.search(r"\d", r.get("reply_body", r["body"]))]
             item["price_responses"] = price_responses
             item["pending"] += ["供应商回复的币种与计价口径", "附加费、舱位、有效期及销售加价"]
             if any(r["association"] == "adjacent_context" for r in price_responses):
@@ -193,7 +201,7 @@ class PresentationService:
         draft_id = hashlib.sha256((revision + inquiry_id).encode()).hexdigest()[:24]
         path = self.root / "drafts" / f"{draft_id}.json"
         if path.is_file():
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding="utf-8"))
         draft = {"draft_id": draft_id, "source_revision": revision, "inquiry_id": inquiry_id,
                  "created_at": datetime.now(timezone.utc).isoformat(), "status": "pending_confirmation",
                  "sent": False, "total": None, "currency": None, "body": body,
@@ -212,7 +220,17 @@ def _pdf_page(data: bytes, number: int) -> dict:
         if number < 1 or number > len(document.pages):
             raise AirfreightOperationError("page_missing", "PDF 页码不存在", http_status=404)
         page = document.pages[number - 1]
+        # A merged notes cell can make a table row's bounding box span several
+        # destinations. Use the first cell's height for the visual row focus.
+        row_regions = []
+        for table in page.find_tables():
+            for row in table.rows:
+                if row.cells and row.cells[0] is not None:
+                    first = row.cells[0]
+                    row_regions.append({"bbox": list(row.bbox),
+                                        "focus_bbox": [row.bbox[0], first[1], row.bbox[2], first[3]]})
         output = io.BytesIO()
-        page.to_image(resolution=120).original.save(output, format="PNG")
-        return {"width": page.width, "height": page.height,
+        page.to_image(resolution=180).original.save(output, format="PNG")
+        return {"width": page.width, "height": page.height, "page_count": len(document.pages),
+                "row_regions": row_regions,
                 "image": "data:image/png;base64," + base64.b64encode(output.getvalue()).decode()}

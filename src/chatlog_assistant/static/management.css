@@ -22,3 +22,58 @@ footer{background:white;border-top:1px solid var(--line-200);display:flex;align-
 
 .prefill-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.prefill-bar>span{font-size:11px;color:var(--text-600)}.prefill-button{color:var(--primary-700);background:var(--primary-50);border-color:var(--primary-100)}.prefill-button .icon{width:16px;height:16px}.prefill-hint{font-size:11px;color:var(--ai-600);margin:0 0 10px;line-height:1.6}
 @media(max-width:1000px){.prefill-button{padding:0 10px;font-size:11px}}
+
+/* Keep long PDF price lists readable without moving the fixed review action. */
+.shell{grid-template-columns:minmax(0,1fr)}
+main,footer{min-width:0}
+.pdf-review .table-scroll{height:clamp(190px,calc(100svh - 640px),320px);min-height:190px;max-height:55svh;resize:vertical;scrollbar-gutter:stable;overscroll-behavior:contain}
+.pdf-review .table-scroll .rate-table{min-width:420px;table-layout:fixed;font-size:13px;font-variant-numeric:tabular-nums}
+.pdf-review .table-scroll th,.pdf-review .table-scroll td{padding:9px 12px}
+.pdf-review .table-scroll th{font-size:11px}
+.pdf-review .table-scroll th:first-child,.pdf-review .table-scroll td:first-child{width:42px;padding:9px 10px}
+.pdf-review .table-scroll th:nth-child(4),.pdf-review .table-scroll td:nth-child(4){text-align:right;font-weight:600}
+.pdf-review .table-scroll th:last-child,.pdf-review .table-scroll td:last-child{text-align:right}
+.source-table-scroll{overflow-x:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.source-table-scroll .rate-table{min-width:390px;table-layout:fixed;font-variant-numeric:tabular-nums}
+.source-table-scroll th:not(:first-child),.source-table-scroll td:not(:first-child){text-align:right}
+.source-table-scroll:focus-visible,.pdf-review .table-scroll:focus-visible{outline:2px solid var(--primary-600);outline-offset:-2px}
+@media(max-width:760px){.pdf-review .table-scroll{height:240px;min-height:200px;max-height:50svh;resize:none}.source-row{flex-shrink:0}.source-label{flex-wrap:wrap;gap:6px}}
+
+.pdf-reader{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;overflow:hidden;background:#eeeae7}
+.pdf-source>details.source-row{flex-shrink:0}
+.pdf-source>details.source-row summary{cursor:pointer;list-style:none}
+.pdf-source>details.source-row summary:after{content:'展开各档价格';font-size:10px;color:var(--primary-700)}
+.pdf-source>details.source-row[open] summary:after{content:'收起'}
+.pdf-source>details.source-row:not([open]) summary{margin-bottom:0}
+.pdf-reader-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:9px 12px;background:#fff;border-bottom:1px solid var(--line-200);flex-shrink:0}
+.pdf-reader-group{display:flex;align-items:center;gap:4px}
+.pdf-reader-toolbar button,.pdf-reader-toolbar select{height:30px;border:1px solid var(--line-200);border-radius:6px;background:#fff;color:var(--text-600);padding:0 8px;font-size:11px}
+.pdf-reader-toolbar button:hover{background:var(--primary-50);color:var(--primary-700)}
+.pdf-reader-toolbar button:disabled{opacity:.4;cursor:default}
+.pdf-reader-toolbar output{font-size:11px;min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+.pdf-reader-toolbar button:focus-visible,.pdf-reader-toolbar select:focus-visible,.pdf-reader-scroll:focus-visible{outline:2px solid var(--primary-600);outline-offset:-2px}
+.pdf-reader-status{font-size:10px;color:var(--text-600);padding:6px 12px;flex-shrink:0;background:#f8f4ef}
+.pdf-reader-scroll{overflow:auto;min-height:0;flex:1;padding:12px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.pdf-reader-page{position:relative;min-width:100%;max-width:none;background:white;box-shadow:0 1px 6px #38251e20}
+.pdf-reader-page img{display:block;width:100%;height:auto}
+.pdf-reader-highlight{position:absolute;border:2px solid #c7801c;background:#ffb82716;pointer-events:none;box-sizing:border-box}
+.pdf-reader-dialog{width:calc(100vw - 32px);height:calc(100svh - 32px);max-width:1600px;max-height:none;padding:0;border:1px solid var(--line-200);border-radius:12px;overflow:hidden}
+.pdf-reader-dialog[open]{display:flex}
+.pdf-reader-dialog::backdrop{background:#18100dd9}
+#dialogBody>.pdf-reader{height:72svh}
+@media(max-width:760px){.pdf-reader-toolbar{padding:7px;gap:5px}.pdf-reader-toolbar button,.pdf-reader-toolbar select{font-size:10px;padding:0 6px}.pdf-reader-status{padding:5px 8px}.pdf-reader-scroll{padding:8px}.pdf-reader-dialog{width:calc(100vw - 12px);height:calc(100svh - 12px)}.pdf-reader-dialog .pdf-reader{min-height:0}}
+
+/* Chat samples and full-context browsing. */
+.sample-picker{border:1px solid var(--line,#eadada);border-radius:12px;padding:12px 16px;margin-bottom:16px;background:#fff;min-width:0}
+.sample-picker label,.chat-context-controls label{display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600;min-width:0}
+.sample-picker select,.chat-context-controls select{min-width:0;max-width:100%;flex:1;padding:8px;border:1px solid #dfd0d0;border-radius:6px;background:#fff;color:inherit}
+.sample-picker p,.chat-context-controls p{font-size:12px;line-height:1.6;margin:8px 0 0;color:#766666}
+.sample-picker p span{display:block;color:#827878}
+.chat-context-controls{padding:10px 18px;border-bottom:1px solid #e2dada;background:#fff}
+.chat-context-controls .text-button{margin-top:6px}
+@media(max-width:760px){.sample-picker label,.chat-context-controls label{align-items:stretch;flex-direction:column;gap:6px}.sample-picker{padding:10px;margin-bottom:10px}}
+
+.sample-picker{flex-shrink:0}.sample-picker summary{font-size:11px;color:#766666;cursor:pointer;margin-top:6px}.chat-context-controls{flex-shrink:0}.chat-context-controls small{font-size:11px;color:#766666;display:inline-block;margin-left:8px}
+@media(max-width:760px){main{overflow-y:auto}.workspace:not(.full){min-height:360px;flex-shrink:0}.sample-picker label,.chat-context-controls label{flex-direction:row;align-items:center}.sample-picker label{font-size:11px}.chat-context-controls{padding:8px 12px}.chat-context-controls label{font-size:11px}}
+
+.case-explanation{margin-top:8px}.case-explanation summary{font-size:12px;font-weight:600;cursor:pointer;color:#753134}.case-explanation p{max-height:100px;overflow:auto;margin-top:6px}.chat-context-controls>.case-explanation+small{margin:6px 0 0;display:block}

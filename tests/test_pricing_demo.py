@@ -1,6 +1,7 @@
 """Human review boundaries using isolated synthetic fixtures, never real prices."""
 from __future__ import annotations
 
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -12,6 +13,24 @@ from chatlog_assistant.sources.wecom_airfreight import AirfreightOperationError
 
 
 class PricingReviewTests(unittest.TestCase):
+    def test_explicit_quote_body_is_not_parsed_as_a_new_airline_price(self):
+        reply = self.source['messages'][1]
+        reply['body'] = '旧询价 TK +500 99；供应商本次 O3 +500 28'
+        reply['reply_body'] = 'O3 +500 28'
+        self.source['messages'] = self.source['messages'][:2]
+        self.write_sources()
+        candidates = self.prepare('chat')['candidates']
+        self.assertEqual([(c['airline'], c['amount']) for c in candidates], [('O3', '28')])
+        self.assertIn('TK +500 99', candidates[0]['evidence']['messages'][1]['body'])
+
+    def test_ambiguous_density_typo_does_not_become_a_price(self):
+        self.source['messages'][1]['body'] = 'TK +100 1;1000 31.5'
+        self.source['messages'] = self.source['messages'][:2]
+        self.write_sources()
+        candidates = self.prepare('chat')['candidates']
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]['amount'], '')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -32,8 +51,8 @@ class PricingReviewTests(unittest.TestCase):
         self.write_sources()
 
     def write_sources(self):
-        (self.root / "active-rate.json").write_text(json.dumps(self.card))
-        (self.root / "source-chat.json").write_text(json.dumps(self.source))
+        (self.root / "active-rate.json").write_text(json.dumps(self.card, ensure_ascii=False), encoding="utf-8")
+        (self.root / "source-chat.json").write_text(json.dumps(self.source, ensure_ascii=False), encoding="utf-8")
 
     def prepare(self, lane):
         return self.service.prepare(lane, self.service.sources.snapshot()["revision"])
@@ -43,6 +62,58 @@ class PricingReviewTests(unittest.TestCase):
                  "candidate_ids": ids, "action": "approve", "corrections": {"origin": "Test warehouse"}}
         value.update(overrides)
         return self.service.review(value)
+
+    def test_sample_selection_preserves_default_and_isolates_reviews(self):
+        from chatlog_assistant.sources.presentation_samples import sample_root, sample_catalog
+        sample = self.root / "samples" / "chat-example"
+        sample.mkdir(parents=True)
+        for name in ("source-chat.json", "active-rate.json"):
+            (sample / name).write_bytes((self.root / name).read_bytes())
+        (self.root / "samples.json").write_text(json.dumps({"samples": [
+            {"id": "chat-example", "title": "示例会话"}]}), encoding="utf-8")
+        original = self.prepare("chat")
+        before = self.service.path.read_bytes()
+        self.assertEqual(sample_root(self.root, "default"), self.root.resolve())
+        self.assertEqual(sample_catalog(self.root)[1]["id"], "chat-example")
+        other = PricingDemo(sample_root(self.root, "chat-example"))
+        self.assertIsNone(other.snapshot()["run_id"])
+        prepared = other.prepare("chat", other.sources.snapshot()["revision"])
+        other.new_run()
+        self.assertNotEqual(original["run_id"], prepared["run_id"])
+        self.assertEqual(self.service.path.read_bytes(), before)
+        for invalid in ("../", "unknown", "chat-example/.."):
+            with self.assertRaises(AirfreightOperationError):
+                sample_root(self.root, invalid)
+
+    def test_curated_demo_hides_unselected_messages_and_rejects_hidden_review(self):
+        import hashlib
+        prepared = self.prepare('chat')
+        keep, hidden = prepared['candidates']
+        before = self.service.path.read_bytes()
+        source_hash = hashlib.sha256((self.root / 'source-chat.json').read_bytes()).hexdigest()
+        policy = {'source_sha256': source_hash, 'cases': [{'inquiry_id': keep['inquiry_id'],
+            'title': '明确报价', 'explanation': '核对报价', 'message_orders': [1, 2],
+            'candidate_ids': [keep['id']]}]}
+        (self.root / 'demo-curation.json').write_text(json.dumps(policy), encoding='utf-8')
+        result = self.service.snapshot()
+        self.assertEqual([c['id'] for c in result['candidates']], [keep['id']])
+        self.assertEqual([m['capture_order'] for m in result['materials']['source']['messages']], [1, 2])
+        self.assertEqual([r['capture_order'] for r in result['materials']['inquiries'][0]['responses']], [2])
+        with self.assertRaises(AirfreightOperationError) as caught:
+            self.review(prepared, [hidden['id']], action='reject')
+        self.assertEqual(caught.exception.error_code, 'case_not_selected')
+        self.assertEqual(self.service.path.read_bytes(), before)
+        self.source['messages'][0]['body'] += ' source changed'
+        self.write_sources()
+        self.assertEqual(self.service.snapshot()['candidates'], [])
+
+    def test_bare_number_is_not_a_meaningful_validity(self):
+        prepared = self.prepare('pdf')
+        with self.assertRaises(AirfreightOperationError) as caught:
+            self.review(prepared, [prepared['candidates'][0]['id']],
+                        corrections={'origin': '测试交仓', 'validity': '1'})
+        self.assertEqual(caught.exception.error_code, 'validity_unclear')
+        self.assertEqual(self.service.snapshot()['prices'], [])
 
     def test_get_does_not_initialize_or_auto_adopt(self):
         self.assertFalse(self.service.path.exists())
@@ -122,7 +193,7 @@ class PricingReviewTests(unittest.TestCase):
         s = self.prepare("pdf")
         ids = [c["id"] for c in s["candidates"]]
         # Corrupt the last fixture value to prove earlier row writes roll back.
-        with sqlite3.connect(self.service.path) as conn:
+        with closing(sqlite3.connect(self.service.path)) as conn, conn:
             payload = json.loads(conn.execute("SELECT payload FROM candidates WHERE id=?", (ids[-1],)).fetchone()[0])
             payload["amount"] = "NaN"
             conn.execute("UPDATE candidates SET payload=? WHERE id=?", (json.dumps(payload), ids[-1]))
@@ -177,7 +248,7 @@ class PricingReviewTests(unittest.TestCase):
         self.assertEqual(new["prices"], [])
         with self.assertRaises(AirfreightOperationError):
             self.review(old, [old["candidates"][1]["id"]])
-        with sqlite3.connect(self.service.path) as conn:
+        with closing(sqlite3.connect(self.service.path)) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 1)
 
     def test_source_changed_blocks_approval_before_reparse(self):

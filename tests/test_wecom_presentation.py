@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -16,6 +18,10 @@ def message(order, body, role="sales", quote=None):
 
 
 class InquiryTests(unittest.TestCase):
+    def test_packaging_and_month_tokens_are_not_destinations(self):
+        item = extract_inquiries([message(1, "RUH 1PLT 160KG 0.96CBM SEP 4 1PKG")])[0]
+        self.assertEqual(item['destinations'], ['RUH'])
+
     def test_total_weight_wins_over_per_piece_and_volume(self):
         items = extract_inquiries([
             message(1, "AMM 20箱 每箱重量12kg 总240 1.5CBM"),
@@ -51,6 +57,33 @@ class InquiryTests(unittest.TestCase):
 
 
 class RateTests(unittest.TestCase):
+    def test_pdf_viewer_reports_actual_page_count_and_rejects_out_of_range(self):
+        objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
+                   b'<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+                   b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Resources << >> >>',
+                   b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 300] /Resources << >> >>']
+        data = b'%PDF-1.4\n'
+        offsets = [0]
+        for i, obj in enumerate(objects, 1):
+            offsets.append(len(data))
+            data += str(i).encode() + b' 0 obj\n' + obj + b'\nendobj\n'
+        xref = len(data)
+        data += b'xref\n0 5\n0000000000 65535 f \n'
+        data += b''.join(f'{offset:010d} 00000 n \n'.encode() for offset in offsets[1:])
+        data += f'trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n'.encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            digest = hashlib.sha256(data).hexdigest()
+            (root / f'rate-{digest}.pdf').write_bytes(data)
+            service = PresentationService(root)
+            page = service.pdf_page(digest, 2)
+            self.assertEqual(page['page_count'], 2)
+            self.assertEqual((page['width'], page['height']), (200, 300))
+            self.assertTrue(base64.b64decode(page['image'].split(',')[1]).startswith(b'\x89PNG\r\n\x1a\n'))
+            with self.assertRaises(AirfreightOperationError) as error:
+                service.pdf_page(digest, 3)
+            self.assertEqual(error.exception.error_code, 'page_missing')
+
     def setUp(self):
         self.card = {"valid_from": "2026-08-01", "currency": "HKD", "rows": [
             {"destination": "BRU", "breaks": {"+45": "9", "+100": "8", "+300": None, "+500": "6", "+1000": "5"}}
@@ -78,11 +111,21 @@ class DraftTests(unittest.TestCase):
         self.source = {"source_mode": "wecom_ui_observation", "anonymized": True,
                        "message_date": "2026-09-04", "complete_day": False,
                        "messages": [message(1, "WAW 460KG 1CBM 货在深圳"), message(2, "O3 +300 27", "supplier")]}
-        (self.root / "source-chat.json").write_text(json.dumps(self.source))
+        (self.root / "source-chat.json").write_text(json.dumps(self.source, ensure_ascii=False), encoding="utf-8")
         self.service = PresentationService(self.root)
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_verified_local_snapshot_is_distinct_from_ui_observation(self):
+        self.source.update(source_mode="wecom_local_snapshot", verification={
+            "verified": True, "snapshots": [{"database": "message.db", "sha256": "a" * 64, "verified": True}]})
+        (self.root / "source-chat.json").write_text(json.dumps(self.source), encoding="utf-8")
+        self.assertEqual(self.service.snapshot()["source"]["source_mode"], "wecom_local_snapshot")
+        self.source["verification"]["verified"] = False
+        (self.root / "source-chat.json").write_text(json.dumps(self.source), encoding="utf-8")
+        with self.assertRaises(AirfreightOperationError):
+            self.service.snapshot()
 
     def test_draft_never_invents_currency_total_or_send_state(self):
         data = self.service.snapshot()
@@ -98,7 +141,7 @@ class DraftTests(unittest.TestCase):
     def test_changed_source_invalidates_previous_revision(self):
         data = self.service.snapshot()
         self.source["messages"][1]["body"] = "O3 +300 29"
-        (self.root / "source-chat.json").write_text(json.dumps(self.source))
+        (self.root / "source-chat.json").write_text(json.dumps(self.source, ensure_ascii=False), encoding="utf-8")
         with self.assertRaises(AirfreightOperationError) as result:
             self.service.create_draft(data["default_inquiry_id"], data["revision"])
         self.assertEqual(result.exception.error_code, "source_changed")

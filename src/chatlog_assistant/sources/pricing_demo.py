@@ -5,6 +5,7 @@ never calls the legacy rule-based automatic adoption path or writes business DBs
 """
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -16,6 +17,7 @@ import uuid
 
 from .wecom_airfreight import AirfreightOperationError
 from .wecom_presentation import PresentationService, _canonical
+from .presentation_samples import curate_materials
 
 
 SCHEMA = """
@@ -78,7 +80,7 @@ def chat_candidates(snapshot: dict) -> list[dict]:
         return result
     for inquiry in snapshot["inquiries"]:
         for reply in inquiry["price_responses"]:
-            body = reply["body"]
+            body = reply.get("reply_body", reply["body"])
             segments = list(re.finditer(r"(?<![A-Z])(?:TK|SQ|CZ|HU|YG|KJ|O3)(?![A-Z])", body, re.I))
             for i, match in enumerate(segments):
                 segment = body[match.end():segments[i + 1].start() if i + 1 < len(segments) else len(body)]
@@ -90,6 +92,10 @@ def chat_candidates(snapshot: dict) -> list[dict]:
                 residual = re.sub(r"1\s*:\s*(?:1\s*:\s*)?\d+(?:\.\d+)?", " ", residual)
                 value = re.search(r"(?<![\d.])(\d+(?:\.\d+)?)", residual)
                 complex_price = len(re.findall(r"1\s*:\s*\d+", segment)) > 1 or len(inquiry["destinations"]) > 1
+                # Several remaining numbers may be malformed density, surcharges,
+                # dates or alternate rates. Do not silently choose the first one.
+                if len(re.findall(r"(?<![\d.])\d+(?:\.\d+)?", residual)) > 1:
+                    complex_price = True
                 if re.search(r"\d\s*\+\s*\d", residual):
                     complex_price = True
                 currency = next((c for c in ("HKD", "CNY", "USD", "EUR") if re.search(r"\b" + c + r"\b", body, re.I)), "")
@@ -140,12 +146,12 @@ class PricingDemo:
         return row[0] if row else None
 
     def snapshot(self) -> dict:
-        materials = self.sources.snapshot()
+        materials = curate_materials(self.root, self.sources.snapshot())
         result = {"materials": materials, "run_id": None, "candidates": [], "prices": [], "decisions": [],
                   "reviewer": REVIEWER, "demo_only": True}
         if not self.path.is_file():
             return result
-        with sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)) as conn:
             conn.row_factory = sqlite3.Row
             run = self._run(conn)
             result["run_id"] = run
@@ -154,7 +160,9 @@ class PricingDemo:
                 item.update(status=row["status"], reviewed_at=row["reviewed_at"], reason=row["reason"],
                             version=row["version"], revision=row["revision"],
                             stale=row["revision"] != materials["revision"])
-                result["candidates"].append(item)
+                if (item['lane'] != 'chat' or 'curation' not in materials
+                        or item['id'] in materials['curation']['candidate_ids']):
+                    result["candidates"].append(item)
             for row in conn.execute("SELECT * FROM prices WHERE run_id=? ORDER BY rowid DESC", (run,)):
                 result["prices"].append({**json.loads(row["payload"]), "version": row["version"],
                                          "price_key": row["price_key"]})
@@ -163,7 +171,7 @@ class PricingDemo:
         return result
 
     def prepare(self, lane: str, revision: str) -> dict:
-        materials = self.sources.snapshot()
+        materials = curate_materials(self.root, self.sources.snapshot())
         if revision != materials["revision"]:
             raise AirfreightOperationError("source_changed", "资料已更新，请刷新后重新整理", http_status=409)
         if lane not in {"pdf", "chat"}:
@@ -171,7 +179,9 @@ class PricingDemo:
         if lane == "pdf" and not materials["rate_card"] or lane == "chat" and not materials["source"]:
             raise AirfreightOperationError("missing_source", "请先导入本链路的真实资料")
         candidates = pdf_candidates(materials["rate_card"]) if lane == "pdf" else chat_candidates(materials)
-        with self._connect() as conn:
+        if lane == 'chat' and 'curation' in materials:
+            candidates = [c for c in candidates if c['id'] in materials['curation']['candidate_ids']]
+        with closing(self._connect()) as conn, conn:
             run = self._run(conn)
             for item in candidates:
                 conn.execute("INSERT OR IGNORE INTO candidates(id,run_id,lane,revision,payload) VALUES(?,?,?,?,?)",
@@ -188,6 +198,8 @@ class PricingDemo:
         missing = [label for key, label in labels.items() if not str(item.get(key) or "").strip()]
         if missing:
             raise AirfreightOperationError("review_incomplete", "请确认：" + "、".join(missing))
+        if re.fullmatch(r"\d+", item['validity'].strip()):
+            raise AirfreightOperationError('validity_unclear', '适用期限不能只填写数字，请填写日期或明确的适用说明')
         try:
             value = Decimal(str(item.get("amount")))
             if not value.is_finite() or value <= 0:
@@ -229,14 +241,17 @@ class PricingDemo:
         if (not isinstance(demo_fields, list) or any(not isinstance(k, str) for k in demo_fields)
                 or set(demo_fields) - set(changes)):
             raise AirfreightOperationError("invalid_prefill_fields", "演示预填标记只能对应本次填写的业务字段")
-        materials = self.sources.snapshot()
-        with self._connect() as conn:
+        materials = curate_materials(self.root, self.sources.snapshot())
+        with closing(self._connect()) as conn, conn:
             run = self._run(conn)
             if value.get("run_id") != run or value.get("revision") != materials["revision"]:
                 raise AirfreightOperationError("review_changed", "演示或资料已更新，请刷新后审核", http_status=409)
             rows = [conn.execute("SELECT * FROM candidates WHERE run_id=? AND id=?", (run, i)).fetchone() for i in ids]
             if any(row is None for row in rows):
                 raise AirfreightOperationError("candidate_missing", "所选价格不存在", http_status=404)
+            if 'curation' in materials and any(row['lane'] == 'chat' and
+                    row['id'] not in materials['curation']['candidate_ids'] for row in rows):
+                raise AirfreightOperationError('case_not_selected', '此报价未纳入精选演示，请刷新后选择已核对案例', http_status=409)
             if len(rows) > 1 and any(row["lane"] != "pdf" for row in rows):
                 raise AirfreightOperationError("chat_review_one", "群聊价格必须逐条人工审核")
             if len(rows) > 1 and set(changes) - {"origin", "validity"}:
@@ -272,6 +287,6 @@ class PricingDemo:
 
     def new_run(self) -> dict:
         """Archive rather than erase the previous presentation's review history."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute("INSERT INTO runs VALUES(?,?)", (uuid.uuid4().hex, _now()))
         return self.snapshot()
