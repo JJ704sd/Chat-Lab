@@ -153,3 +153,15 @@ main{padding-top:10px;padding-bottom:12px}
 @media(max-width:760px){.app{--brandbar-height:54px}.shell{grid-template-rows:var(--brandbar-height) minmax(0,1fr) auto}.rail{top:var(--brandbar-height);height:calc(100svh - var(--brandbar-height));padding-top:12px}.brand-logo{width:180px}.topbar{padding-left:0;padding-right:12px}}
 .shell>main{grid-row:2}
 .shell>footer{grid-row:3}
+
+/* Match the original warm surfaces and quieter navigation typography. */
+.topbar{background:var(--surface-50);border-bottom-color:#eadfdd;padding-left:4px}
+.topbar:after{content:'';position:absolute;bottom:-1px;left:0;width:80px;height:3px;background:var(--nav-900)}
+.topbar>div.brand-heading:first-child{gap:4px}
+.brand-logo{width:204px;mix-blend-mode:multiply}
+.brand-heading h1{border-left:0;padding-left:8px;font-size:15px;font-weight:500;color:var(--text-600)}
+.top-actions{gap:14px}
+.top-actions>.tag{background:#f2e9e7;color:var(--text-600)}
+.reviewer i{background:#f0e2df}
+@media(max-width:1000px){.topbar:after{width:64px}.brand-logo{width:186px}.brand-heading h1{font-size:14px;padding-left:4px}}
+@media(max-width:760px){.topbar:after{width:55px}.brand-logo{width:176px}}
